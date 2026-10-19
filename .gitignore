@@ -1,0 +1,32 @@
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Bb]in/
+[Ob]bj/
+
+# Visual Studio 2015/2017/2019/2022 cache folder
+.vs/
+
+# Visual Studio C++ generated files
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+
+# Executables and libraries
+*.exe
+*.dll
+*.lib
+*.pdb
+*.ilk
