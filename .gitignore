@@ -1,32 +1,33 @@
-# User-specific files
-*.rsuser
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
+# ==========================================
+# CMake (Тимчасові файли конфігурації)
+# ==========================================
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
 
-# Build results
-[Dd]ebug/
-[Dd]ebugPublic/
-[Rr]elease/
-[Rr]eleases/
-x64/
-x86/
+# ==========================================
+# Стандартні папки збірки (Куди збирається гра)
+# ==========================================
+# Якщо ви налаштували CMake збирати проєкт у папки "build", "out" або "bin"
+[Bb]uild/
+[Oo]ut/
 [Bb]in/
-[Ob]bj/
+.cmake/
 
-# Visual Studio 2015/2017/2019/2022 cache folder
+# ==========================================
+# Сгенеровані файли Visual Studio через CMake
+# ==========================================
+# CMake генерує файли проєкту VS, які теж є тимчасовими
+/*.sln
+/*.vcxproj
+/*.vcxproj.filters
+/*.vcxproj.user
 .vs/
-
-# Visual Studio C++ generated files
-*.sdf
-*.opensdf
-*.VC.db
-*.VC.opendb
-
-# Executables and libraries
-*.exe
-*.dll
-*.lib
-*.pdb
-*.ilk
+[Bb]uild/
