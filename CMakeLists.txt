@@ -14,16 +14,17 @@ set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_GAMEPAD OFF CACHE BOOL "" FORCE)
 add_subdirectory("raylib")
 # ===============================================================
-
+file(GLOB SOURCES "src/*.cpp" "*.cpp")
 # Add source to this project's executable.
-add_executable (ProjectD1CE_CMake "main.cpp" "ProjectD1CE_CMake.h" "Player.cpp")
+add_executable (${PROJECT_NAME} ${SOURCES}  )
+target_include_directories(${PROJECT_NAME} PRIVATE . ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
-    set_property(TARGET ProjectD1CE_CMake PROPERTY CXX_STANDARD 20)
+    set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 endif()
 
 # ==================== 2. ЗВ'ЯЗУВАННЯ З RAYLIB ===================
-target_link_libraries(ProjectD1CE_CMake PRIVATE raylib)
+target_link_libraries(${PROJECT_NAME} PRIVATE raylib)
 # ===============================================================
 
 # TODO: Add tests and install targets if needed.
