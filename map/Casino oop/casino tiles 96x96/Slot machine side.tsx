@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tileset version="1.10" tiledversion="1.12.2" name="Slot machine side" tilewidth="96" tileheight="96" tilecount="6" columns="3">
+ <image source="../../Desktop/CASINO TILES SET/Objects_devided/96x96/Slot machine side.png" width="288" height="192"/>
+</tileset>
