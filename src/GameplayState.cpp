@@ -3,7 +3,7 @@
 void GameplayState::Init() {
 	targetTexture = LoadRenderTexture(virtualWidth, virtualHeight);
 
-	player = new Player({ 400.0f,300.0f }, 9.0f, 40.0f, 60.0f);
+	player = new Player({ 400.0f,300.0f }, 250.0f, 40.0f, 60.0f);
 }
 void GameplayState::Cleanup() {
 	if (targetTexture.id != 0) {

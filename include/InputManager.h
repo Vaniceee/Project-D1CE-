@@ -13,10 +13,7 @@ class InputManager {
 public:
     
     static Vector2 GetMovementDirection();
-
-    // Останній активний напрямок (для майбутніх анімацій)
     static PlayerDirection GetLastDirection();
-
-    // Шаблон для події взаємодії (наприклад, клавіша E)
     static bool IsInteractPressed();
+    static bool IsSprintPressed();
 };

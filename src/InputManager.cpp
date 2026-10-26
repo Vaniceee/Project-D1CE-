@@ -35,3 +35,7 @@ bool InputManager::IsInteractPressed() {
     // Шаблон події взаємодії (клавіша E)
     return IsKeyPressed(KEY_E);
 }
+
+bool InputManager::IsSprintPressed() {
+    return IsKeyDown(KEY_LEFT_SHIFT);
+}

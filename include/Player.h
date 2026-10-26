@@ -14,6 +14,15 @@ public:
 private:
     float currentSpeed;
 
+
+    // Стаміна параметри
+    float maxStamina = 100.0f;
+    float currentStamina = 100.0f;
+    float staminaDrainRate = 30.0f;
+    float staminaRegenRate = 20.0f;
+    bool isExhausted = false;
+
+
     // Розміри та зсув для коллайдера в ногах
     float footBoxWidth;
     float footBoxHeight;

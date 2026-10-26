@@ -23,17 +23,42 @@ Rectangle Player::GetFootCollider() const {
 void Player::Update() {
     Vector2 moveDir = InputManager::GetMovementDirection();
     float deltaTime = GetFrameTime();
-    float frameSpeed = speed * deltaTime * 60.0f;
+
+
+
+    // ---- СПРИНТ-------------
+    bool isMoving = (moveDir.x != 0.0f or moveDir.y != 0.0f);
+    float currentMoveSpeed = speed;
+    bool wantsToSprint = InputManager::IsSprintPressed() && isMoving && !isExhausted;
+
+    if (wantsToSprint) {
+
+        currentMoveSpeed *= 1.8f;
+        currentStamina -= staminaDrainRate * deltaTime;
+        if (currentStamina <= 0.0f) {
+            currentStamina = 0.0f;
+            isExhausted = true;
+        }
+    }
+    else {
+        currentStamina += staminaRegenRate * deltaTime;
+        if (currentStamina >= maxStamina) {
+            currentStamina = maxStamina;
+            isExhausted = false;
+        }
+    }
+
+
+    
 
     // --- ПОЕТАПНИЙ РУХ (SEPARATED-AXIS MOVEMENT) ДЛЯ КОВЗАННЯ ---
-
+    float frameSpeed = currentMoveSpeed * deltaTime;
     // 1. Рух та перевірка по осі X
     position.x += moveDir.x * frameSpeed;
     collider.x = position.x + footOffsetX;
 
     // Перевірка меж екрана віртуальний холст 
     Collisions::ClampToBounds(collider, position, 1280.0f, 720.0f);
-    
     position.x = collider.x - footOffsetX;
 
     // (Тут у майбутньому буде: якщо є зіткнення зі стіною мапи по X -> відкотити position.x)
