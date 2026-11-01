@@ -16,7 +16,7 @@ add_subdirectory("raylib")
 # ===============================================================
 file(GLOB SOURCES "src/*.cpp")
 # Add source to this project's executable.
-add_executable (${PROJECT_NAME} ${SOURCES} )
+add_executable (${PROJECT_NAME} ${SOURCES}  "include/config.h")
 target_include_directories(${PROJECT_NAME} PRIVATE . ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
