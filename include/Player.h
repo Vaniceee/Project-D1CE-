@@ -11,6 +11,8 @@ public:
 
     PlayerDirection GetCurrentDirection() const;
 
+    Rectangle GetFootCollider() const;
+
 private:
     float currentSpeed;
 
@@ -28,6 +30,4 @@ private:
     float footBoxHeight;
     float footOffsetX;
     float footOffsetY;
-
-    Rectangle GetFootCollider() const;
 };

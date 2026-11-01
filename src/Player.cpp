@@ -58,8 +58,8 @@ void Player::Update() {
     collider.x = position.x + footOffsetX;
 
     // Перевірка меж екрана віртуальний холст 
-    Collisions::ClampToBounds(collider, position, 1280.0f, 720.0f);
-    position.x = collider.x - footOffsetX;
+    //Collisions::ClampToBounds(collider, position, 1280.0f, 720.0f);
+    //position.x = collider.x - footOffsetX;
 
     // (Тут у майбутньому буде: якщо є зіткнення зі стіною мапи по X -> відкотити position.x)
 
@@ -69,8 +69,8 @@ void Player::Update() {
     collider.y = position.y + footOffsetY;
 
     // Перевірка меж екрана
-    Collisions::ClampToBounds(collider, position, 1280.0f, 720.0f);
-    position.y = collider.y - footOffsetY;
+    //Collisions::ClampToBounds(collider, position, 1280.0f, 720.0f);
+    //position.y = collider.y - footOffsetY;
 
     // (Тут у майбутньому буде: якщо є зіткнення зі стіною мапи по Y -> відкотити position.y)
 
