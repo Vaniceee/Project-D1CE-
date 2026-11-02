@@ -57,7 +57,7 @@ void Player::Update(const GameMap& gameMap) {
 
     // --- ПОЕТАПНИЙ РУХ (SEPARATED-AXIS MOVEMENT) ДЛЯ КОВЗАННЯ ---
     float frameSpeed = currentMoveSpeed * deltaTime;
-    const float nudgeTolerance = 12.0f; // Поріг у пікселях для автоматичного виштовхування з кутів
+    const float nudgeTolerance = 13.0f; // Поріг у пікселях для автоматичного виштовхування з кутів
 
     // =========================================================================
     // 1. РУХ ТА КОЛІЗІЇ ПО ОСІ X (З ВИШТОВХУВАННЯМ ПО Y)
@@ -69,27 +69,45 @@ void Player::Update(const GameMap& gameMap) {
             // Скасовуємо спробу руху по X
             position.x -= moveDir.x * frameSpeed;
 
-            // Перевіряємо кути
-            Rectangle testUp = GetFootCollider();
-            testUp.y -= nudgeTolerance;
-            testUp.x += moveDir.x * frameSpeed;
+            // ЯКЩО СТАН ЩЕ НЕ ЗАФІКСОВАНО: шукаємо напрямок виштовхування
+            if (activeNudgeY == 0) {
+                Rectangle testUp = GetFootCollider();
+                testUp.y -= nudgeTolerance;
+                testUp.x += moveDir.x * frameSpeed;
 
-            Rectangle testDown = GetFootCollider();
-            testDown.y += nudgeTolerance;
-            testDown.x += moveDir.x * frameSpeed;
+                Rectangle testDown = GetFootCollider();
+                testDown.y += nudgeTolerance;
+                testDown.x += moveDir.x * frameSpeed;
 
-            bool canPassUp = !gameMap.CheckWallCollision(testUp);
-            bool canPassDown = !gameMap.CheckWallCollision(testDown);
+                bool canPassUp = !gameMap.CheckWallCollision(testUp);
+                bool canPassDown = !gameMap.CheckWallCollision(testDown);
 
-            if (canPassUp && !canPassDown) {
-                position.y -= frameSpeed; // Силовий нудж вгору
-                moveDir.y = 0.0f;         // БЛОКУЄМО інпут вниз на цей кадр, щоб гравець не тягнув назад
+                if (canPassUp && !canPassDown) {
+                    activeNudgeY = -1; // Блокуємо стан: тільки ВГОРУ
+                }
+                else if (canPassDown && !canPassUp) {
+                    activeNudgeY = 1;  // Блокуємо стан: тільки ВНИЗ
+                }
             }
-            else if (canPassDown && !canPassUp) {
-                position.y += frameSpeed; // Силовий нудж вниз
-                moveDir.y = 0.0f;         // БЛОКУЄМО інпут вгору на цей кадр
+
+            // ЗАСТОСУВАННЯ ЗАФІКСОВАНОГО СТАНУ
+            if (activeNudgeY == -1) {
+                position.y -= frameSpeed; // Примусово виштовхуємо вгору
+                moveDir.y = 0.0f;         // Гасимо будь-який інпут вниз
+            }
+            else if (activeNudgeY == 1) {
+                position.y += frameSpeed; // Примусово виштовхуємо вниз
+                moveDir.y = 0.0f;         // Гасимо будь-який інпут вгору
             }
         }
+        else {
+            // Якщо рух по X пройшов без колізій — скидаємо фіксацію стану
+            activeNudgeY = 0;
+        }
+    }
+    else {
+        // Якщо гравець зупинив рух по X — скидаємо стан
+        activeNudgeY = 0;
     }
 
     // =========================================================================
@@ -102,27 +120,45 @@ void Player::Update(const GameMap& gameMap) {
             // Скасовуємо спробу руху по Y
             position.y -= moveDir.y * frameSpeed;
 
-            // Перевіряємо кути
-            Rectangle testLeft = GetFootCollider();
-            testLeft.x -= nudgeTolerance;
-            testLeft.y += moveDir.y * frameSpeed;
+            // ЯКЩО СТАН ЩЕ НЕ ЗАФІКСОВАНО: шукаємо напрямок виштовхування
+            if (activeNudgeX == 0) {
+                Rectangle testLeft = GetFootCollider();
+                testLeft.x -= nudgeTolerance;
+                testLeft.y += moveDir.y * frameSpeed;
 
-            Rectangle testRight = GetFootCollider();
-            testRight.x += nudgeTolerance;
-            testRight.y += moveDir.y * frameSpeed;
+                Rectangle testRight = GetFootCollider();
+                testRight.x += nudgeTolerance;
+                testRight.y += moveDir.y * frameSpeed;
 
-            bool canPassLeft = !gameMap.CheckWallCollision(testLeft);
-            bool canPassRight = !gameMap.CheckWallCollision(testRight);
+                bool canPassLeft = !gameMap.CheckWallCollision(testLeft);
+                bool canPassRight = !gameMap.CheckWallCollision(testRight);
 
-            if (canPassLeft && !canPassRight) {
-                position.x -= frameSpeed; // Силовий нудж ліворуч
-                moveDir.x = 0.0f;         // БЛОКУЄМО інпут праворуч на цей кадр
+                if (canPassLeft && !canPassRight) {
+                    activeNudgeX = -1; // Блокуємо стан: тільки ЛІВОРУЧ
+                }
+                else if (canPassRight && !canPassLeft) {
+                    activeNudgeX = 1;  // Блокуємо стан: тільки ПРАВОРУЧ
+                }
             }
-            else if (canPassRight && !canPassLeft) {
-                position.x += frameSpeed; // Силовий нудж праворуч
-                moveDir.x = 0.0f;         // БЛОКУЄМО інпут ліворуч на цей кадр
+
+            // ЗАСТОСУВАННЯ ЗАФІКСОВАНОГО СТАНУ
+            if (activeNudgeX == -1) {
+                position.x -= frameSpeed; // Примусово виштовхуємо ліворуч
+                moveDir.x = 0.0f;         // Гасимо будь-який інпут праворуч
+            }
+            else if (activeNudgeX == 1) {
+                position.x += frameSpeed; // Примусово виштовхуємо праворуч
+                moveDir.x = 0.0f;         // Гасимо будь-який інпут ліворуч
             }
         }
+        else {
+            // Якщо рух по Y пройшов без колізій — скидаємо фіксацію стану
+            activeNudgeX = 0;
+        }
+    }
+    else {
+        // Якщо гравець зупинив рух по Y — скидаємо стан
+        activeNudgeX = 0;
     }
 
     // Оновлюємо внутрішній коллайдер після фінального коригування позиції

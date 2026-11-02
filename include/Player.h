@@ -21,6 +21,9 @@ public:
 private:
     float currentSpeed;
 
+    int activeNudgeY = 0;
+    int activeNudgeX = 0;
+
 
     // Стаміна параметри
     float maxStamina = 100.0f;

@@ -26,7 +26,7 @@ void GameplayState::Init() {
 
     gameMap.Load(Config::PATH_MAP);
     Vector2 startPos = { 2944.0f, 2464.0f };
-    player = new Player(startPos, 250.0f, 40.0f, 60.0f);
+    player = new Player(startPos, 250.0f, 32.0f, 64.0f);
 
     camera.target = startPos;
     camera.offset = { (float)virtualWidth / 2.0f, (float)virtualHeight / 2.0f };
