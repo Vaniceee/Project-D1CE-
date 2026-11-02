@@ -44,6 +44,9 @@ void Player::Update() {
         currentStamina += staminaRegenRate * deltaTime;
         if (currentStamina >= maxStamina) {
             currentStamina = maxStamina;
+        }
+        float minStaminaToSprint = maxStamina * 0.4f;
+        if (isExhausted && currentStamina >= minStaminaToSprint) {
             isExhausted = false;
         }
     }
@@ -57,20 +60,12 @@ void Player::Update() {
     position.x += moveDir.x * frameSpeed;
     collider.x = position.x + footOffsetX;
 
-    // Перевірка меж екрана віртуальний холст 
-    //Collisions::ClampToBounds(collider, position, 1280.0f, 720.0f);
-    //position.x = collider.x - footOffsetX;
-
     // (Тут у майбутньому буде: якщо є зіткнення зі стіною мапи по X -> відкотити position.x)
 
 
     // 2. Рух та перевірка по осі Y
     position.y += moveDir.y * frameSpeed;
     collider.y = position.y + footOffsetY;
-
-    // Перевірка меж екрана
-    //Collisions::ClampToBounds(collider, position, 1280.0f, 720.0f);
-    //position.y = collider.y - footOffsetY;
 
     // (Тут у майбутньому буде: якщо є зіткнення зі стіною мапи по Y -> відкотити position.y)
 

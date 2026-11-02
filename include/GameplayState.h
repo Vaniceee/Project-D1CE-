@@ -18,6 +18,8 @@ private:
     GameMap gameMap;
     Player* player = nullptr;
 
+    Camera2D camera = { 0 };
+
     const int virtualWidth = 1280;
     const int virtualHeight = 720;
 

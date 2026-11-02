@@ -1,4 +1,7 @@
 #include "GameplayState.h"
+#include <string>
+#include <cmath>
+
 
 void GameplayState::Init() {
     targetTexture = LoadRenderTexture(virtualWidth, virtualHeight);
@@ -15,9 +18,20 @@ void GameplayState::Init() {
     am.LoadTexture("WALLS 2 32x32", Config::PATH_PNG_WALLS_2);
     am.LoadTexture("Slot machine side", Config::PATH_PNG_SLOT_MACHINE_SIDE);
 
-    gameMap.Load(Config::PATH_MAP);
+    for (int i = 0; i <= 10; ++i) {
+        std::string name = "stamina_" + std::to_string(i);
+        std::string path = "assets/stamina/bar" + std::to_string(i) + ".png";
+        am.LoadTexture(name, path);
+    }
 
-    player = new Player({ 2944.0f, 2464.0f }, 250.0f, 40.0f, 60.0f);
+    gameMap.Load(Config::PATH_MAP);
+    Vector2 startPos = { 2944.0f, 2464.0f };
+    player = new Player(startPos, 250.0f, 40.0f, 60.0f);
+
+    camera.target = startPos;
+    camera.offset = { (float)virtualWidth / 2.0f, (float)virtualHeight / 2.0f };
+    camera.rotation = 0.0f;
+    camera.zoom = 1.8f;
 }
 
 void GameplayState::Cleanup() {
@@ -51,13 +65,20 @@ void GameplayState::Update() {
 
         // Оновлення тригеров дверей / взаємодій
         gameMap.UpdateDoorTriggers(footCollider);
+        camera.target = {
+            footCollider.x + footCollider.width / 2.0f,
+            footCollider.y + footCollider.height / 2.0f
+
+        };
     }
 }
 
 void GameplayState::Draw() {
     // 1. РЕНДЕРИНГ ІГРОВОГО СВІТУ (малюємо всередині текстури рендерингу)
     BeginTextureMode(targetTexture);
-    ClearBackground(MAROON);
+    ClearBackground(BLACK);
+
+    BeginMode2D(camera);
 
     // Спершу малюємо тайли, що знаходяться ПІД гравцем (підлога, килими тощо)
     gameMap.DrawBelowPlayer();
@@ -68,6 +89,8 @@ void GameplayState::Draw() {
 
     // Потім малюємо шари НАД гравцем (дах, верхні частини стін тощо)
     gameMap.DrawAbovePlayer();
+
+    EndMode2D();
 
     EndTextureMode();
 
@@ -95,6 +118,36 @@ void GameplayState::Draw() {
     DrawTexturePro(targetTexture.texture, sourceRec, destRec, origin, 0.0f, WHITE);
 
     // -------------------------------------------------------------------------
-    // ТУТ БУДЕ ВІДОБРАЖЕННЯ ІНТЕРФЕЙСУ ПАУЗИ В МАЙБУТНЬОМУ
+    //  ВІДОБРАЖЕННЯ ІНТЕРФЕЙСУ 
     // -------------------------------------------------------------------------
+    if (player) {
+        // --- ШКАЛА СТАМІНИ ---
+        float staminaRatio = player->GetCurrentStamina() / player->GetMaxStamina();
+        if (staminaRatio < 0.0f) staminaRatio = 0.0f;
+        if (staminaRatio > 1.0f) staminaRatio = 1.0f;
+
+       
+        int staminaFrame = (int)std::round(staminaRatio * 10.0f);
+
+        std::string staminaTexName = "stamina_" + std::to_string(staminaFrame);
+        Texture2D staminaTex = AssetManager::Instance().GetTexture(staminaTexName);
+
+        if (staminaTex.id > 0) {
+            Vector2 position = { 20.0f, 400.0f }; 
+            float scaleTex = 2.5f;                
+            float rotation = 270.0f;
+
+            DrawTextureEx(staminaTex, position, rotation, scaleTex, WHITE);
+            
+        }
+
+        // --- ДЕБАГ ПАНЕЛЬ ---
+        Rectangle foot = player->GetFootCollider();
+        DrawRectangle(10, 10, 350, 80, Fade(BLACK, 0.8f));
+        DrawRectangleLines(10, 10, 350, 80, GREEN);
+
+        DrawFPS(20, 20);
+        DrawText(TextFormat("Player Pos: X: %.1f | Y: %.1f", foot.x, foot.y), 20, 45, 18, GREEN);
+        DrawText(TextFormat("Tile Coords: X: %d | Y: %d", (int)(foot.x / 32.0f), (int)(foot.y / 32.0f)), 20, 65, 18, YELLOW);
+    }
 }

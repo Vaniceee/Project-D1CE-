@@ -10,8 +10,11 @@ public:
     void Draw() override;
 
     PlayerDirection GetCurrentDirection() const;
-
     Rectangle GetFootCollider() const;
+
+    // Геттери для стаміни
+    float GetCurrentStamina() const { return currentStamina; }
+    float GetMaxStamina() const { return maxStamina; }
 
 private:
     float currentSpeed;
