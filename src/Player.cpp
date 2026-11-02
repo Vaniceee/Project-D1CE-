@@ -1,4 +1,5 @@
 #include "Player.h"
+#include "Map.h"
 #include "Collisions.h"
 #include "raylib.h"
 
@@ -20,7 +21,7 @@ Rectangle Player::GetFootCollider() const {
     return { position.x + footOffsetX, position.y + footOffsetY, footBoxWidth, footBoxHeight };
 }
 
-void Player::Update() {
+void Player::Update(const GameMap& gameMap) {
     Vector2 moveDir = InputManager::GetMovementDirection();
     float deltaTime = GetFrameTime();
 
@@ -56,25 +57,86 @@ void Player::Update() {
 
     // --- ПОЕТАПНИЙ РУХ (SEPARATED-AXIS MOVEMENT) ДЛЯ КОВЗАННЯ ---
     float frameSpeed = currentMoveSpeed * deltaTime;
-    // 1. Рух та перевірка по осі X
-    position.x += moveDir.x * frameSpeed;
+    const float nudgeTolerance = 12.0f; // Поріг у пікселях для автоматичного виштовхування з кутів
+
+    // =========================================================================
+    // 1. РУХ ТА КОЛІЗІЇ ПО ОСІ X (З ВИШТОВХУВАННЯМ ПО Y)
+    // =========================================================================
+    if (moveDir.x != 0.0f) {
+        position.x += moveDir.x * frameSpeed;
+
+        if (gameMap.CheckWallCollision(GetFootCollider())) {
+            // Скасовуємо спробу руху по X
+            position.x -= moveDir.x * frameSpeed;
+
+            // Перевіряємо кути
+            Rectangle testUp = GetFootCollider();
+            testUp.y -= nudgeTolerance;
+            testUp.x += moveDir.x * frameSpeed;
+
+            Rectangle testDown = GetFootCollider();
+            testDown.y += nudgeTolerance;
+            testDown.x += moveDir.x * frameSpeed;
+
+            bool canPassUp = !gameMap.CheckWallCollision(testUp);
+            bool canPassDown = !gameMap.CheckWallCollision(testDown);
+
+            if (canPassUp && !canPassDown) {
+                position.y -= frameSpeed; // Силовий нудж вгору
+                moveDir.y = 0.0f;         // БЛОКУЄМО інпут вниз на цей кадр, щоб гравець не тягнув назад
+            }
+            else if (canPassDown && !canPassUp) {
+                position.y += frameSpeed; // Силовий нудж вниз
+                moveDir.y = 0.0f;         // БЛОКУЄМО інпут вгору на цей кадр
+            }
+        }
+    }
+
+    // =========================================================================
+    // 2. РУХ ТА КОЛІЗІЇ ПО ОСІ Y (З ВИШТОВХУВАННЯМ ПО X)
+    // =========================================================================
+    if (moveDir.y != 0.0f) {
+        position.y += moveDir.y * frameSpeed;
+
+        if (gameMap.CheckWallCollision(GetFootCollider())) {
+            // Скасовуємо спробу руху по Y
+            position.y -= moveDir.y * frameSpeed;
+
+            // Перевіряємо кути
+            Rectangle testLeft = GetFootCollider();
+            testLeft.x -= nudgeTolerance;
+            testLeft.y += moveDir.y * frameSpeed;
+
+            Rectangle testRight = GetFootCollider();
+            testRight.x += nudgeTolerance;
+            testRight.y += moveDir.y * frameSpeed;
+
+            bool canPassLeft = !gameMap.CheckWallCollision(testLeft);
+            bool canPassRight = !gameMap.CheckWallCollision(testRight);
+
+            if (canPassLeft && !canPassRight) {
+                position.x -= frameSpeed; // Силовий нудж ліворуч
+                moveDir.x = 0.0f;         // БЛОКУЄМО інпут праворуч на цей кадр
+            }
+            else if (canPassRight && !canPassLeft) {
+                position.x += frameSpeed; // Силовий нудж праворуч
+                moveDir.x = 0.0f;         // БЛОКУЄМО інпут ліворуч на цей кадр
+            }
+        }
+    }
+
+    // Оновлюємо внутрішній коллайдер після фінального коригування позиції
     collider.x = position.x + footOffsetX;
-
-    // (Тут у майбутньому буде: якщо є зіткнення зі стіною мапи по X -> відкотити position.x)
-
-
-    // 2. Рух та перевірка по осі Y
-    position.y += moveDir.y * frameSpeed;
     collider.y = position.y + footOffsetY;
 
-    // (Тут у майбутньому буде: якщо є зіткнення зі стіною мапи по Y -> відкотити position.y)
-
-
-    // Шаблон взаємодії
+ // Шаблон взаємодії
     if (InputManager::IsInteractPressed()) {
         // Дія взаємодії
     }
+
 }
+   
+
 
 void Player::Draw() {
     // Малюємо повний габарит гравця (блакитним)

@@ -1,12 +1,14 @@
 #pragma once
 #include "Entity.h"
 #include "InputManager.h"
+class GameMap;
 
 class Player : public Entity {
 public:
     Player(Vector2 startPos, float startSpeed, float width, float height);
 
-    void Update() override;
+    void Update() override {}
+    void Update(const GameMap& gameMap);
     void Draw() override;
 
     PlayerDirection GetCurrentDirection() const;

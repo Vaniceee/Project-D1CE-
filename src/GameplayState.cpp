@@ -56,10 +56,8 @@ void GameplayState::Update() {
     // -------------------------------------------------------------------------
 
     if (player) {
-        player->Update();
-
-        // Перевірка колізій гравця зі стінами мапи
-        // (Примітка: якщо у твого гравця є окремий метод для отримання хітбокса, наприклад player->GetHitbox(), використовуй його)
+        player->Update(gameMap);
+  
         Rectangle footCollider = player->GetFootCollider();
 
 

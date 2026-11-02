@@ -280,13 +280,13 @@ void GameMap::DrawBelowPlayer() {
         DrawSingleLayer(layerData);
     }
 
-    for (const auto& rect : collisionRects) {
+    /*for (const auto& rect : collisionRects) {
         DrawRectangleRec(rect, Fade(RED, 0.4f));
     }
 
     for (const auto& trigger : doorTriggers) {
         DrawRectangleLinesEx(trigger, 2, GREEN);
-    }
+    }*/
 }
 
 
@@ -302,20 +302,32 @@ void GameMap::DrawAbovePlayer() {
 void GameMap::DrawSingleLayer(const std::vector<int>& layerData) {
     if (layerData.empty() || tilesets.empty()) return;
 
+    // Бітові маски прапорців трансформації у Tiled
+    constexpr uint32_t FLIPPED_HORIZONTALLY_FLAG = 0x80000000;
+    constexpr uint32_t FLIPPED_VERTICALLY_FLAG = 0x40000000;
+    constexpr uint32_t FLIPPED_DIAGONALLY_FLAG = 0x20000000;
+    constexpr uint32_t ALL_FLIP_FLAGS = (FLIPPED_HORIZONTALLY_FLAG |
+        FLIPPED_VERTICALLY_FLAG |
+        FLIPPED_DIAGONALLY_FLAG);
+
     for (int y = 0; y < mapHeight; ++y) {
         for (int x = 0; x < mapWidth; ++x) {
             int idx = x + y * mapWidth;
             if (idx < 0 || idx >= (int)layerData.size()) continue; // Захист від виходу за межі пам'яті
 
-            int globalTileId = layerData[idx];
-            if (globalTileId == 0) continue; // 0 — пуста клітинка
+            int rawGlobalTileId = layerData[idx];
+            if (rawGlobalTileId == 0) continue; // 0 — пуста клітинка
+
+            // Очищаємо GID від бітів повороту, щоб отримати реальний ID тайла
+            uint32_t globalTileId = rawGlobalTileId & ~ALL_FLIP_FLAGS;
+            if (globalTileId == 0) continue;
 
             // Шукаємо, якому саме тайлсету належить globalTileId
             const TilesetInfo* activeTileset = nullptr;
             int localTileId = 0;
 
             for (int i = (int)tilesets.size() - 1; i >= 0; --i) {
-                if (globalTileId >= tilesets[i].firstgid) {
+                if (globalTileId >= (uint32_t)tilesets[i].firstgid) {
                     activeTileset = &tilesets[i];
                     localTileId = globalTileId - tilesets[i].firstgid;
                     break;
@@ -342,8 +354,41 @@ void GameMap::DrawSingleLayer(const std::vector<int>& layerData) {
                 posY -= (activeTileset->tileHeight - tileHeight);
             }
 
-            Vector2 pos = { posX, posY };
-            DrawTextureRec(activeTileset->texture, srcRec, pos, WHITE);
+            // Перевірка прапорців для дзеркалення/повороту
+            bool flipH = (rawGlobalTileId & FLIPPED_HORIZONTALLY_FLAG) != 0;
+            bool flipV = (rawGlobalTileId & FLIPPED_VERTICALLY_FLAG) != 0;
+            bool flipD = (rawGlobalTileId & FLIPPED_DIAGONALLY_FLAG) != 0;
+
+            if (!flipH && !flipV && !flipD) {
+                // Звичайне швидке малювання без будь-яких поворотів
+                Vector2 pos = { posX, posY };
+                DrawTextureRec(activeTileset->texture, srcRec, pos, WHITE);
+            }
+            else {
+                // Використовуємо DrawTexturePro для коректного обертання та дзеркалення
+                Rectangle destRec = {
+                    posX + (float)tileWidth / 2.0f,
+                    posY + (float)tileHeight / 2.0f,
+                    (float)activeTileset->tileWidth,
+                    (float)activeTileset->tileHeight
+                };
+                Vector2 origin = { (float)activeTileset->tileWidth / 2.0f, (float)activeTileset->tileHeight / 2.0f };
+
+                float rotation = 0.0f;
+
+                // Стандартна матриця трансформацій Tiled для обробки діагональних прапорців
+                if (flipD) {
+                    if (flipH && !flipV) { rotation = 90.0f; flipH = false; flipV = false; }
+                    else if (!flipH && flipV) { rotation = 270.0f; flipH = false; flipV = false; }
+                    else if (flipH && flipV) { rotation = 90.0f; flipH = false; flipV = true; }
+                    else { rotation = 270.0f; flipH = true; flipV = false; }
+                }
+
+                if (flipH) srcRec.width = -srcRec.width;
+                if (flipV) srcRec.height = -srcRec.height;
+
+                DrawTexturePro(activeTileset->texture, srcRec, destRec, origin, rotation, WHITE);
+            }
         }
     }
 }
@@ -408,7 +453,7 @@ void GameMap::ParseObjectLayer(const std::string& content, const std::string& la
 
 
 // ПЕРЕВІРКА ЗІТКНЕНЬ ЗІ СТІНАМИ
-bool GameMap::CheckWallCollision(Rectangle playerHitbox) {
+bool GameMap::CheckWallCollision(Rectangle playerHitbox) const {
     for (const auto& rect : collisionRects) {
         if (CheckCollisionRecs(playerHitbox, rect)) {
             return true;

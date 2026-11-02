@@ -24,7 +24,7 @@ public:
     void DrawAbovePlayer();
 
     // Перевірки ігровій логіки (колізії та тригери)
-    bool CheckWallCollision(Rectangle playerHitbox);
+    bool CheckWallCollision(Rectangle playerHitbox) const;
     void UpdateDoorTriggers(Rectangle playerHitbox);
 
     // Гетери для отримання інформації про мапу
