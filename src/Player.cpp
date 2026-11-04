@@ -34,7 +34,7 @@ void Player::Update(const GameMap& gameMap) {
 
     if (wantsToSprint) {
 
-        currentMoveSpeed *= 1.8f;
+        currentMoveSpeed *= 1.55f;
         currentStamina -= staminaDrainRate * deltaTime;
         if (currentStamina <= 0.0f) {
             currentStamina = 0.0f;

@@ -280,13 +280,13 @@ void GameMap::DrawBelowPlayer() {
         DrawSingleLayer(layerData);
     }
 
-    for (const auto& rect : collisionRects) {
+   /* for (const auto& rect : collisionRects) {
         DrawRectangleRec(rect, Fade(RED, 0.4f));
     }
 
     for (const auto& trigger : doorTriggers) {
         DrawRectangleLinesEx(trigger, 2, GREEN);
-    }
+    }*/
 }
 
 

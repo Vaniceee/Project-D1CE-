@@ -43,12 +43,22 @@ void GameplayState::Init() {
 
     gameMap.Load(Config::PATH_MAP);
     Vector2 startPos = { 2944.0f, 2464.0f };
-    player = new Player(startPos, 250.0f, 32.0f, 64.0f);
+    player = new Player(startPos, 180.0f, 32.0f, 64.0f);
 
     camera.target = startPos;
     camera.offset = { (float)virtualWidth / 2.0f, (float)virtualHeight / 2.0f };
     camera.rotation = 0.0f;
     camera.zoom = 1.8f;
+
+    //======================MUSIC======================
+    AssetManager::Instance().LoadMusic("ambient", Config::PATH_AUDIO_AMBIENT);
+    bgMusic = AssetManager::Instance().GetMusic("ambient");
+
+    SetMusicVolume(bgMusic, 0.046f);
+    bgMusic.looping = true;
+
+    PlayMusicStream(bgMusic);
+    //=================================================
 }
 
 void GameplayState::Cleanup() {
@@ -77,6 +87,7 @@ void GameplayState::Update() {
     // -------------------------------------------------------------------------
 
     if (player) {
+        UpdateMusicStream(bgMusic);
         player->Update(gameMap);
   
         Rectangle footCollider = player->GetFootCollider();
@@ -92,7 +103,7 @@ void GameplayState::Update() {
         // Мерехтіння та передача позиції гравця в шейдер
         flickerTimer += GetFrameTime();
         float noise = (float)GetRandomValue(-10, 10) / 400.0f;
-        currentFlicker = 1.0f + (sinf(flickerTimer * 5.0f) * 0.025f) + noise;
+        currentFlicker = 1.0f + (sinf(flickerTimer * 25.0f) * 0.025f) + noise;
         SetShaderValue(lightShader, flickerLoc, &currentFlicker, SHADER_UNIFORM_FLOAT);
 
         Vector2 playerScreenPos = GetWorldToScreen2D(camera.target, camera);

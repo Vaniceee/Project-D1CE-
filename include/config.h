@@ -6,7 +6,7 @@ namespace Config {
 // constexpr const char* - тип для всього (не помню чому такий але воно працює
 // PATH_MENUBG - код для шляху (завжди кабсом, PATH_НАЗВАФАЙЛУКОРОТКО)
 // = "assets/MainMenu.png"; - адреса, бажано файли називати теж зрозуміло
-
+	constexpr const char* PATH_AUDIO_AMBIENT = "assets/music/ambient_1.wav";
 	constexpr const char* PATH_MAP = "map/Casino oop/casino_map_3232.tmj"; // мапа в tmj
 	constexpr const char* PATH_SHADER_LIGHTING = "assets/shaders/lighting.frag";
 	// усі тайлсети..

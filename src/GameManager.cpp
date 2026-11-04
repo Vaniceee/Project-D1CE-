@@ -11,6 +11,7 @@ GameManager::~GameManager() {
 void GameManager::Init() {
     SetConfigFlags(FLAG_FULLSCREEN_MODE);
     InitWindow(screenWidth, screenHeight, "Stealth Horror Game");
+    InitAudioDevice();
     SetTargetFPS(300);
 
     // Запускаємо стартовий геймплейний стан
@@ -57,6 +58,7 @@ void GameManager::Shutdown() {
         delete currentState;
         currentState = nullptr;
     }
+    CloseAudioDevice();
     if (IsWindowReady()) {
         CloseWindow();
     }
