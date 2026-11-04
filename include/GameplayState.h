@@ -25,6 +25,18 @@ private:
 
     RenderTexture2D targetTexture = { 0 };
 
+    // --- ШЕЙДЕР ОСВІТЛЕННЯ ---
+    Shader lightShader = { 0 };
+    int playerPosLoc = -1;
+    int resolutionLoc = -1;
+    int radiusLoc = -1;
+    int flickerLoc = -1;
+    int ambientLoc = -1;
+
+    float lightRadius = 260.0f;
+    float flickerTimer = 0.0f;
+    float currentFlicker = 1.0f;
+
     // Прапорець для майбутньої паузи (зараз ні на що не впливає)
     bool isPaused = false;
 };

@@ -6,6 +6,23 @@
 void GameplayState::Init() {
     targetTexture = LoadRenderTexture(virtualWidth, virtualHeight);
 
+    // === 1. ІНІЦІАЛІЗАЦІЯ ШЕЙДЕРА ОСВІТЛЕННЯ ===
+    lightShader = LoadShader(0, Config::PATH_SHADER_LIGHTING);
+
+    playerPosLoc = GetShaderLocation(lightShader, "playerScreenPos");
+    resolutionLoc = GetShaderLocation(lightShader, "resolution");
+    radiusLoc = GetShaderLocation(lightShader, "lightRadius");
+    flickerLoc = GetShaderLocation(lightShader, "flicker");
+    ambientLoc = GetShaderLocation(lightShader, "ambientColor");
+
+    float res[2] = { (float)virtualWidth, (float)virtualHeight };
+    SetShaderValue(lightShader, resolutionLoc, res, SHADER_UNIFORM_VEC2);
+    SetShaderValue(lightShader, radiusLoc, &lightRadius, SHADER_UNIFORM_FLOAT);
+
+    float ambient[4] = { 0.04f, 0.04f, 0.08f, 1.0f }; // Тон темряви навколо
+    SetShaderValue(lightShader, ambientLoc, ambient, SHADER_UNIFORM_VEC4);
+    // ============================================
+
     AssetManager& am = AssetManager::Instance();
 
     // Завантаження графіки для рівня
@@ -38,6 +55,10 @@ void GameplayState::Cleanup() {
     // Вивантажуємо мапу
     gameMap.Unload();
 
+    if (lightShader.id != 0) {
+        UnloadShader(lightShader);
+    }
+
     if (targetTexture.id != 0) {
         UnloadRenderTexture(targetTexture);
     }
@@ -68,6 +89,15 @@ void GameplayState::Update() {
             footCollider.y + footCollider.height / 2.0f
 
         };
+        // Мерехтіння та передача позиції гравця в шейдер
+        flickerTimer += GetFrameTime();
+        float noise = (float)GetRandomValue(-10, 10) / 400.0f;
+        currentFlicker = 1.0f + (sinf(flickerTimer * 5.0f) * 0.025f) + noise;
+        SetShaderValue(lightShader, flickerLoc, &currentFlicker, SHADER_UNIFORM_FLOAT);
+
+        Vector2 playerScreenPos = GetWorldToScreen2D(camera.target, camera);
+        float pos[2] = { playerScreenPos.x, playerScreenPos.y };
+        SetShaderValue(lightShader, playerPosLoc, pos, SHADER_UNIFORM_VEC2);
     }
 }
 
@@ -113,7 +143,9 @@ void GameplayState::Draw() {
     Rectangle destRec = { destX, destY, drawWidth, drawHeight };
     Vector2 origin = { 0.0f, 0.0f };
 
+    BeginShaderMode(lightShader);
     DrawTexturePro(targetTexture.texture, sourceRec, destRec, origin, 0.0f, WHITE);
+    EndShaderMode();
 
     // -------------------------------------------------------------------------
     //  ВІДОБРАЖЕННЯ ІНТЕРФЕЙСУ 

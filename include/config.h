@@ -3,12 +3,12 @@
 
 namespace Config {
 // Далі додавати так: constexpr const char* PATH_MENUBG = "assets/MainMenu.png";
-// constexpr const char* - тип для всього (не помню чому такий але воно працює)
+// constexpr const char* - тип для всього (не помню чому такий але воно працює
 // PATH_MENUBG - код для шляху (завжди кабсом, PATH_НАЗВАФАЙЛУКОРОТКО)
 // = "assets/MainMenu.png"; - адреса, бажано файли називати теж зрозуміло
 
 	constexpr const char* PATH_MAP = "map/Casino oop/casino_map_3232.tmj"; // мапа в tmj
-
+	constexpr const char* PATH_SHADER_LIGHTING = "assets/shaders/lighting.frag";
 	// усі тайлсети..
 	constexpr const char* PATH_PNG_OTHER_OBJECTS = "map/CASINO TILES SET/Objects_devided/32x32/1 other objects.png";
 	constexpr const char* PATH_PNG_FLOOR = "map/CASINO TILES SET/Floor/1_FLOOR.png";
