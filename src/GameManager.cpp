@@ -1,6 +1,13 @@
 #include "GameManager.h"
 #include "GameplayState.h"
 #include "raylib.h"
+#include "MainMenuState.h"
+
+
+GameManager& GameManager::Instance() {
+    static GameManager instance;
+    return instance;
+}
 
 GameManager::GameManager() {}
 
@@ -15,7 +22,7 @@ void GameManager::Init() {
     SetTargetFPS(300);
 
     // Запускаємо стартовий геймплейний стан
-    ChangeState(new GameplayState());
+    ChangeState(new MainMenuState());
 }
 
 void GameManager::ChangeState(GameState* newState) {

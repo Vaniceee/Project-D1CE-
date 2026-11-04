@@ -6,6 +6,13 @@ namespace Config {
 // constexpr const char* - тип для всього (не помню чому такий але воно працює
 // PATH_MENUBG - код для шляху (завжди кабсом, PATH_НАЗВАФАЙЛУКОРОТКО)
 // = "assets/MainMenu.png"; - адреса, бажано файли називати теж зрозуміло
+
+	// ШАБЛОН ДЛЯ ГОЛОВНОГО МЕНЮ(ПОКИ ПОРОЖНЬО, ЧЕКАЙТЕ АПДЕЙТА)
+	constexpr const char* PATH_PNG_MENU_BG = "assets/menu/menu_bg.png";
+	constexpr const char* PATH_AUDIO_MENU_MUSIC = "assets/music/menu_music.wav";
+	//------------------------------------------
+
+
 	constexpr const char* PATH_AUDIO_AMBIENT = "assets/music/ambient_1.wav";
 	constexpr const char* PATH_MAP = "map/Casino oop/casino_map_3232.tmj"; // мапа в tmj
 	constexpr const char* PATH_SHADER_LIGHTING = "assets/shaders/lighting.frag";

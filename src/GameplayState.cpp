@@ -102,8 +102,8 @@ void GameplayState::Update() {
         };
         // Мерехтіння та передача позиції гравця в шейдер
         flickerTimer += GetFrameTime();
-        float noise = (float)GetRandomValue(-10, 10) / 400.0f;
-        currentFlicker = 1.0f + (sinf(flickerTimer * 25.0f) * 0.025f) + noise;
+        float noise = (float)GetRandomValue(-10, 10) / 900.0f;
+        currentFlicker = 1.0f + (sinf(flickerTimer * 10.0f) * 0.025f) + noise;
         SetShaderValue(lightShader, flickerLoc, &currentFlicker, SHADER_UNIFORM_FLOAT);
 
         Vector2 playerScreenPos = GetWorldToScreen2D(camera.target, camera);

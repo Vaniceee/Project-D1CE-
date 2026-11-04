@@ -4,25 +4,26 @@
 
 class GameManager {
 public:
-	GameManager();
-	~GameManager();
+   
+    static GameManager& Instance();
 
-	void Init();
-	void Run();
-	void Shutdown();
+    void Init();
+    void Run();
+    void Shutdown();
 
-	void ChangeState(GameState* newState);
-	void SetResolution(int width, int height);
+    void ChangeState(GameState* newState);
+    void SetResolution(int width, int height);
 
-	int GetScreenWidth() const { return screenWidth; }
-	int GetScreenHeight() const { return screenHeight; }
-
+    int GetScreenWidth() const { return screenWidth; }
+    int GetScreenHeight() const { return screenHeight; }
 
 private:
-	int screenWidth = 1920;
-	int screenHeight = 1080;
+    
+    GameManager();
+    ~GameManager();
 
-	GameState* currentState = nullptr;
+    int screenWidth = 1920;
+    int screenHeight = 1080;
 
-
+    GameState* currentState = nullptr;
 };
