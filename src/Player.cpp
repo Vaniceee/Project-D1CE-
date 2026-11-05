@@ -1,7 +1,9 @@
 #include "Player.h"
 #include "Map.h"
 #include "Collisions.h"
+#include "AssetManager.h"
 #include "raylib.h"
+#include <string>
 
 Player::Player(Vector2 startPos, float startSpeed, float width, float height, Texture2D tex, float playerScale)
     : Entity(startPos, startSpeed, width, height), currentSpeed(startSpeed), texture(tex), scale(playerScale) {
@@ -30,6 +32,30 @@ void Player::SetScale(float newScale) {
 
 Rectangle Player::GetFootCollider() const {
     return { position.x + footOffsetX, position.y + footOffsetY, footBoxWidth, footBoxHeight };
+}
+
+
+
+void Player::PlayFootstepSound(bool isSprinting) {
+    AssetManager& am = AssetManager::Instance();
+
+    // 1. Випадковий вибір одного з 4 звуків кроків
+    int soundIndex = GetRandomValue(1, 4);
+    std::string soundKey = "step_wood_" + std::to_string(soundIndex);
+    Sound stepSound = am.GetSound(soundKey);
+
+    if (stepSound.stream.buffer != nullptr) {
+        // 2. Глибокий pitch (0.82f) з мікро-варіацією (-0.04f ... +0.04f)
+        float randomPitch = 0.82f + ((float)GetRandomValue(-4, 4) / 100.0f);
+
+        // 3. Варіація гучності: при спринті гучніше (0.60f), при ходьбі тихіше (0.35f)
+        float baseVolume = isSprinting ? 0.65f : 0.45f;
+        float randomVolume = baseVolume + ((float)GetRandomValue(-3, 3) / 100.0f);
+
+        SetSoundPitch(stepSound, randomPitch);
+        SetSoundVolume(stepSound, randomVolume);
+        PlaySound(stepSound);
+    }
 }
 
 void Player::Update(const GameMap& gameMap) {
@@ -68,6 +94,20 @@ void Player::Update(const GameMap& gameMap) {
         }
     }
 
+    // ---- ТАЙМЕР ТА ВІДТВОРЕННЯ КРОКІВ ----
+    if (isMoving) {
+        float currentInterval = wantsToSprint ? stepIntervalRun : stepIntervalWalk;
+        stepTimer += deltaTime;
+
+        if (stepTimer >= currentInterval) {
+            PlayFootstepSound(wantsToSprint);
+            stepTimer = 0.0f;
+        }
+    }
+    else {
+        // Коли стоїмо — підганяємо таймер, щоб перший крок при старті звучав без затримки
+        stepTimer = stepIntervalWalk * 0.8f;
+    }
 
     
 

@@ -42,8 +42,14 @@ void GameplayState::Init() {
         am.LoadTexture(name, path);
     }
 
+
+    am.LoadSound("step_wood_1", Config::PATH_STEP_WOOD_1);
+    am.LoadSound("step_wood_2", Config::PATH_STEP_WOOD_2);
+    am.LoadSound("step_wood_3", Config::PATH_STEP_WOOD_3);
+    am.LoadSound("step_wood_4", Config::PATH_STEP_WOOD_4);
+
     gameMap.Load(Config::PATH_MAP);
-    Vector2 startPos = { 2944.0f, 2464.0f };
+    Vector2 startPos = { 1944.0f, 2464.0f };
     player = new Player(startPos, 180.0f, 32.0f, 64.0f, am.GetTexture("player_idle"), 1.45f);
 
     camera.target = startPos;

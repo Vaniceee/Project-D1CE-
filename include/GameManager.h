@@ -14,6 +14,8 @@ public:
     void ChangeState(GameState* newState);
     void SetResolution(int width, int height);
 
+    void Quit() { isRunning = false; }
+
     int GetScreenWidth() const { return screenWidth; }
     int GetScreenHeight() const { return screenHeight; }
 
@@ -26,4 +28,5 @@ private:
     int screenHeight = 1080;
 
     GameState* currentState = nullptr;
+    bool isRunning = true;
 };

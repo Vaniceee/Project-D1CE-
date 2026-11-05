@@ -17,11 +17,12 @@ GameManager::~GameManager() {
 
 void GameManager::Init() {
     SetConfigFlags(FLAG_FULLSCREEN_MODE);
-    InitWindow(screenWidth, screenHeight, "Stealth Horror Game");
     InitAudioDevice();
+    InitWindow(screenWidth, screenHeight, "Stealth Horror Game");
+    
     SetTargetFPS(300);
+    isRunning = true;
 
-    // Запускаємо стартовий геймплейний стан
     ChangeState(new MainMenuState());
 }
 
@@ -43,9 +44,13 @@ void GameManager::SetResolution(int width, int height) {
 }
 
 void GameManager::Run() {
-    while (!WindowShouldClose()) {
+    while (isRunning && !WindowShouldClose()) {
         if (currentState) {
             currentState->Update();
+        }
+
+        if (!isRunning || WindowShouldClose()) {
+            break;
         }
 
         BeginDrawing();
@@ -57,17 +62,27 @@ void GameManager::Run() {
 
         EndDrawing();
     }
+    Shutdown();
 }
 
 void GameManager::Shutdown() {
+
+    static bool isShutdown = false;
+    if (isShutdown) return;
+
+
     if (currentState) {
         currentState->Cleanup();
         delete currentState;
         currentState = nullptr;
     }
+
+    AssetManager::Instance().UnloadAll();
+
     CloseAudioDevice();
     if (IsWindowReady()) {
         CloseWindow();
     }
-    
+
+    isShutdown = true;
 }

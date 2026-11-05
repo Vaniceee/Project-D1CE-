@@ -7,10 +7,16 @@ namespace Config {
 // PATH_MENUBG - код для шляху (завжди кабсом, PATH_НАЗВАФАЙЛУКОРОТКО)
 // = "assets/MainMenu.png"; - адреса, бажано файли називати теж зрозуміло
 
-	// ШАБЛОН ДЛЯ ГОЛОВНОГО МЕНЮ(ПОКИ ПОРОЖНЬО, ЧЕКАЙТЕ АПДЕЙТА)
+	// ШАБЛОН ДЛЯ ГОЛОВНОГО МЕНЮ
 	constexpr const char* PATH_PNG_MENU_BG = "assets/menu/MainMenuBG.png";
-	constexpr const char* PATH_AUDIO_MENU_MUSIC = "assets/music/menu_music.wav";
+	constexpr const char* PATH_AUDIO_MENU_MUSIC = "assets/menu/MenuTheme.wav";
 	//------------------------------------------
+	// Конфігурація кроків
+	constexpr const char* PATH_STEP_WOOD_1 = "assets/sfx/stp1.wav";
+	constexpr const char* PATH_STEP_WOOD_2 = "assets/sfx/stp2.wav";
+	constexpr const char* PATH_STEP_WOOD_3 = "assets/sfx/stp3.wav";
+	constexpr const char* PATH_STEP_WOOD_4 = "assets/sfx/stp4.wav";
+
 
 	//--------ГРАВЕЦЬ
 	constexpr const char* PATH_PNG_PLAYER_IDLE = "assets/player/Idle.png";

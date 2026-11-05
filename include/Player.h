@@ -52,7 +52,14 @@ private:
     float frameWidth = 32.0f;
     float frameHeight = 64.0f;
     float animTimer = 0.0f;
-    float frameSpeed = 0.15f; // Секунд на один кадр
+    float frameSpeed = 0.35f; // Секунд на один кадр
 
     void RecalculateFootCollider();
+
+    // --- ЗВУКИ КРОКІВ ---
+    float stepTimer = 0.0f;
+    float stepIntervalWalk = 0.95f; 
+    float stepIntervalRun = 0.48f; 
+
+    void PlayFootstepSound(bool isSprinting);
 };

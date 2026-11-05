@@ -28,6 +28,15 @@ private:
     bool hasBackground = false;
     bool hasMusic = false;
 
+
+    // --- ÏÅĞÅÕ²Ä ² ÇÂÓÊ ---
+    bool isTransitioning = false;
+    float transitionTimer = 0.0f;
+    const float transitionDuration = 4.0f; 
+
+    Sound startSound;
+    bool hasStartSound = false;
+
     // Êíîïêè
     MenuButton playButton;
     MenuButton exitButton;
