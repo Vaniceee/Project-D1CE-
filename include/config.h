@@ -8,10 +8,12 @@ namespace Config {
 // = "assets/MainMenu.png"; - адреса, бажано файли називати теж зрозуміло
 
 	// ШАБЛОН ДЛЯ ГОЛОВНОГО МЕНЮ(ПОКИ ПОРОЖНЬО, ЧЕКАЙТЕ АПДЕЙТА)
-	constexpr const char* PATH_PNG_MENU_BG = "assets/menu/menu_bg.png";
+	constexpr const char* PATH_PNG_MENU_BG = "assets/menu/MainMenuBG.png";
 	constexpr const char* PATH_AUDIO_MENU_MUSIC = "assets/music/menu_music.wav";
 	//------------------------------------------
 
+	//--------ГРАВЕЦЬ
+	constexpr const char* PATH_PNG_PLAYER_IDLE = "assets/player/Idle.png";
 
 	constexpr const char* PATH_AUDIO_AMBIENT = "assets/music/ambient_1.wav";
 	constexpr const char* PATH_MAP = "map/Casino oop/casino_map_3232.tmj"; // мапа в tmj

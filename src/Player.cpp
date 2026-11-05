@@ -3,18 +3,29 @@
 #include "Collisions.h"
 #include "raylib.h"
 
-Player::Player(Vector2 startPos, float startSpeed, float width, float height)
-    : Entity(startPos, startSpeed, width, height), currentSpeed(startSpeed) {
+Player::Player(Vector2 startPos, float startSpeed, float width, float height, Texture2D tex, float playerScale)
+    : Entity(startPos, startSpeed, width, height), currentSpeed(startSpeed), texture(tex), scale(playerScale) {
 
-    // Налаштування хитбокса в ногах:
-    footBoxWidth = width * 0.6f;   
-    footBoxHeight = height * 0.3f; 
+    RecalculateFootCollider();
+}
 
-    footOffsetX = (width - footBoxWidth) * 0.5f;   
-    footOffsetY = height - footBoxHeight;         
+void Player::RecalculateFootCollider() {
+    // Масштабуємо базову ширину та висоту персонажа
+    float scaledWidth = frameWidth * scale;
+    float scaledHeight = frameHeight * scale;
 
-    // Ініціалізуємо коллайдер
+    footBoxWidth = scaledWidth * 0.55f;
+    footBoxHeight = scaledHeight * 0.25f;
+
+    footOffsetX = (scaledWidth - footBoxWidth) * 0.5f;
+    footOffsetY = scaledHeight - footBoxHeight;
+
     collider = { position.x + footOffsetX, position.y + footOffsetY, footBoxWidth, footBoxHeight };
+}
+
+void Player::SetScale(float newScale) {
+    scale = newScale;
+    RecalculateFootCollider(); // Автоматично оновлюємо розмір хитбокса при зміні скейлу
 }
 
 Rectangle Player::GetFootCollider() const {
@@ -25,7 +36,12 @@ void Player::Update(const GameMap& gameMap) {
     Vector2 moveDir = InputManager::GetMovementDirection();
     float deltaTime = GetFrameTime();
 
-
+    // ---- ОНОВЛЕННЯ АНІМАЦІЇ IDLE ----
+    animTimer += deltaTime;
+    if (animTimer >= frameSpeed) {
+        animTimer = 0.0f;
+        currentFrame = (currentFrame + 1) % totalFrames; // Перемикання кадрів 0 -> 1 -> 2 -> 3 -> 0
+    }
 
     // ---- СПРИНТ-------------
     bool isMoving = (moveDir.x != 0.0f or moveDir.y != 0.0f);
@@ -175,10 +191,31 @@ void Player::Update(const GameMap& gameMap) {
 
 
 void Player::Draw() {
-    // Малюємо повний габарит гравця (блакитним)
-    DrawRectangleRec({ position.x, position.y, collider.width / 0.6f, collider.height / 0.3f }, BLUE);
+    // Якщо текстура підтягнулася — малюємо спрайт та анімацію
+    if (texture.id > 0) {
+        Rectangle sourceRec = {
+            (float)currentFrame * frameWidth,
+            0.0f,
+            frameWidth,
+            frameHeight
+        };
+        float visualOffsetX = -1.5f * scale;
 
-    // Для відлагодження (debugging) візуально показуємо хитбокс у ногах червоним контуром
+        Rectangle destRec = {
+            position.x + visualOffsetX,
+            position.y,
+            frameWidth * scale,
+            frameHeight * scale,
+        };
+
+        DrawTexturePro(texture, sourceRec, destRec, Vector2{ 0.0f, 0.0f }, 0.0f, WHITE);
+    }
+    else {
+        // Резервний синій заповнювач, якщо текстура відсутня
+        DrawRectangleRec({ position.x, position.y, collider.width / 0.6f, collider.height / 0.3f }, BLUE);
+    }
+
+    // Дебаг: червоний контур хитбокса у ногах
     DrawRectangleLinesEx(GetFootCollider(), 1.0f, RED);
 }
 

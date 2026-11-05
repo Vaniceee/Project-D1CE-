@@ -7,8 +7,8 @@ void MainMenuState::Init() {
     AssetManager& am = AssetManager::Instance();
 
     // 1. ШАБЛОН: Спроба завантаження фону (якщо файлу немає — AssetManager обробить це)
-    am.LoadTexture("menu_bg", Config::PATH_PNG_MENU_BG);
-    bgTexture = am.GetTexture("menu_bg");
+    am.LoadTexture("MainMenuBG.jpg", Config::PATH_PNG_MENU_BG);
+    bgTexture = am.GetTexture("MainMenuBG.jpg");
     hasBackground = (bgTexture.id > 0);
 
     // 2. ШАБЛОН: Спроба завантаження фонової музики
