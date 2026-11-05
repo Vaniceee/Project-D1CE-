@@ -39,4 +39,11 @@ add_custom_command(
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/map
 )
 
+add_custom_command(
+    TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/assets
+    $<TARGET_FILE_DIR:${PROJECT_NAME}>/assets
+)
+
 # TODO: Add tests and install targets if needed.

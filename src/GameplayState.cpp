@@ -49,7 +49,7 @@ void GameplayState::Init() {
     am.LoadSound("step_wood_4", Config::PATH_STEP_WOOD_4);
 
     gameMap.Load(Config::PATH_MAP);
-    Vector2 startPos = { 1944.0f, 2464.0f };
+    Vector2 startPos = { 2944.0f, 2464.0f };
     player = new Player(startPos, 180.0f, 32.0f, 64.0f, am.GetTexture("player_idle"), 1.45f);
 
     camera.target = startPos;
