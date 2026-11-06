@@ -3288,12 +3288,30 @@
          "tilewidth":32
         }, 
         {
+         "columns":24,
          "firstgid":3667,
-         "source":"casino tiles 32x32\/Couches 1.tsx"
+         "image":"..\/CASINO TILES SET\/Objects_devided\/32x32\/Couches 1.png",
+         "imageheight":1088,
+         "imagewidth":768,
+         "margin":0,
+         "name":"Couches 1",
+         "spacing":0,
+         "tilecount":816,
+         "tileheight":32,
+         "tilewidth":32
         }, 
         {
+         "columns":24,
          "firstgid":4483,
-         "source":"casino tiles 32x32\/Tables 1.tsx"
+         "image":"..\/CASINO TILES SET\/Objects_devided\/32x32\/Tables 1.png",
+         "imageheight":768,
+         "imagewidth":768,
+         "margin":0,
+         "name":"Tables 1",
+         "spacing":0,
+         "tilecount":576,
+         "tileheight":32,
+         "tilewidth":32
         }],
  "tilewidth":32,
  "type":"map",

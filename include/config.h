@@ -33,5 +33,7 @@ namespace Config {
 	constexpr const char* PATH_PNG_WALLS_1 = "map/CASINO TILES SET/Walls_32x32/WALLS 1 32x32.png";
 	constexpr const char* PATH_PNG_WALLS_2 = "map/CASINO TILES SET/Walls_32x32/WALLS 2 32x32.png";
 	constexpr const char* PATH_PNG_SLOT_MACHINE_SIDE = "map/CASINO TILES SET/Objects_devided/96x96/Slot machine side.png";
+	constexpr const char* PATH_PNG_TABLES_1 = "map/CASINO TILES SET/Objects_devided/32x32/Tables 1.png";
+	constexpr const char* PATH_PNG_COUCHES_1 = "map/CASINO TILES SET/Objects_devided/32x32/Couches 1.png";
 
 }

@@ -36,6 +36,8 @@ void GameplayState::Init() {
     am.LoadTexture("WALLS 1 32x32", Config::PATH_PNG_WALLS_1);
     am.LoadTexture("WALLS 2 32x32", Config::PATH_PNG_WALLS_2);
     am.LoadTexture("Slot machine side", Config::PATH_PNG_SLOT_MACHINE_SIDE);
+    am.LoadTexture("Tables 1", Config::PATH_PNG_TABLES_1);
+    am.LoadTexture("Couches 1", Config::PATH_PNG_COUCHES_1);
 
     for (int i = 0; i <= 10; ++i) {
         std::string name = "stamina_" + std::to_string(i);
@@ -54,7 +56,7 @@ void GameplayState::Init() {
 
 
     gameMap.Load(Config::PATH_MAP);
-    Vector2 startPos = { 2944.0f, 2464.0f };
+    Vector2 startPos = { 1944.0f, 2464.0f };
     player = new Player(startPos, 180.0f, 32.0f, 64.0f, am.GetTexture("player_idle"), 1.45f);
 
     camera.target = startPos;
