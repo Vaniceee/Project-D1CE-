@@ -1,4 +1,5 @@
 #include "GameplayState.h"
+#include "raymath.h"
 #include <string>
 #include <cmath>
 
@@ -47,12 +48,18 @@ void GameplayState::Init() {
     am.LoadSound("step_wood_2", Config::PATH_STEP_WOOD_2);
     am.LoadSound("step_wood_3", Config::PATH_STEP_WOOD_3);
     am.LoadSound("step_wood_4", Config::PATH_STEP_WOOD_4);
+    am.LoadSound("Breath", "assets/player/Breath.wav");
+    
+
+
 
     gameMap.Load(Config::PATH_MAP);
     Vector2 startPos = { 2944.0f, 2464.0f };
     player = new Player(startPos, 180.0f, 32.0f, 64.0f, am.GetTexture("player_idle"), 1.45f);
 
     camera.target = startPos;
+    cameraCurrentTarget = startPos; 
+   
     camera.offset = { (float)virtualWidth / 2.0f, (float)virtualHeight / 2.0f };
     camera.rotation = 0.0f;
     camera.zoom = 1.8f;
@@ -96,25 +103,93 @@ void GameplayState::Update() {
     if (player) {
         UpdateMusicStream(bgMusic);
         player->Update(gameMap);
-  
+
         Rectangle footCollider = player->GetFootCollider();
 
-
-        // Оновлення тригеров дверей / взаємодій
+        // 1. Оновлення тригерів дверей / взаємодій
         gameMap.UpdateDoorTriggers(footCollider);
-        camera.target = {
+
+        // 2. ЦІЛЬОВА ПОЗИЦІЯ ГРАВЦЯ (центр ніг)
+        Vector2 desiredTarget = {
             footCollider.x + footCollider.width / 2.0f,
             footCollider.y + footCollider.height / 2.0f
-
         };
-        // Мерехтіння та передача позиції гравця в шейдер
-        flickerTimer += GetFrameTime();
+
+        float dt = GetFrameTime();
+
+      
+        bool isMoving = player->IsMoving();
+        bool isSprinting = player->IsSprinting();
+
+        // Idle  -> Walk  -> Sprint 
+        float targetSpeed = isMoving ? (isSprinting ? 14.0f : 9.0f) : 2.0f;
+        float targetAmpX = isMoving ? (isSprinting ? 1.9f : 1.0f) : 0.5f;
+        float targetAmpY = isMoving ? (isSprinting ? 2.5f : 1.5f) : 0.9f;
+
+        // Плавний перехід параметрів похитування
+        float blendAlpha = 1.0f - expf(-8.0f * dt);
+        currentBreathSpeed = Lerp(currentBreathSpeed, targetSpeed, blendAlpha);
+        currentAmpX = Lerp(currentAmpX, targetAmpX, blendAlpha);
+        currentAmpY = Lerp(currentAmpY, targetAmpY, blendAlpha);
+
+        breathTimer += dt * currentBreathSpeed;
+
+        // Фігура Ліссажу
+        Vector2 breathOffset = {
+            cosf(breathTimer * 0.5f) * currentAmpX,
+            sinf(breathTimer) * currentAmpY
+        };
+
+        // --- 2. НАКОПИЧЕННЯ ТА ЗГАСАННЯ ТРАВМИ (TRAUMA SHAKE) ---
+        if (player->IsExhausted()) {
+            // При повному виснаженні фіксуємо мінімальний рівень травми
+            if (trauma < 0.40f) trauma = 0.40f;
+        }
+        else {
+            // Якщо стаміна менше 35%, додаємо м'яку мікро-вібрацію
+            float staminaRatio = player->GetCurrentStamina() / player->GetMaxStamina();
+            if (staminaRatio < 0.35f) {
+                float lowStaminaFactor = (0.35f - staminaRatio) / 0.35f;
+                float targetTrauma = lowStaminaFactor * 0.22f;
+                if (trauma < targetTrauma) trauma = targetTrauma;
+            }
+        }
+
+        // Поступове заспокоєння камери з часом
+        if (trauma > 0.0f) {
+            trauma -= dt * 0.7f;
+            if (trauma < 0.0f) trauma = 0.0f;
+        }
+
+        // Розрахунок квадратичної інтенсивності зсуву (trauma^2)
+        float shakeIntensity = trauma * trauma;
+        Vector2 shakeOffset = {
+            ((float)GetRandomValue(-100, 100) / 100.0f) * maxShakeOffset * shakeIntensity,
+            ((float)GetRandomValue(-100, 100) / 100.0f) * maxShakeOffset * shakeIntensity
+        };
+
+        // 3. ПЛАВНЕ СЛІДУВАННЯ КАМЕРИ 
+        float cameraAlpha = 1.0f - expf(-cameraLerpSpeed * dt);
+        cameraCurrentTarget = Vector2Lerp(cameraCurrentTarget, desiredTarget, cameraAlpha);
+
+        
+        camera.target = Vector2Add(cameraCurrentTarget, Vector2Add(breathOffset, shakeOffset));
+
+        // 4. Мерехтіння та передача позиції гравця в шейдер
+        flickerTimer += dt;
         float noise = (float)GetRandomValue(-10, 10) / 900.0f;
         currentFlicker = 1.0f + (sinf(flickerTimer * 10.0f) * 0.025f) + noise;
         SetShaderValue(lightShader, flickerLoc, &currentFlicker, SHADER_UNIFORM_FLOAT);
 
-        Vector2 playerScreenPos = GetWorldToScreen2D(camera.target, camera);
-        float pos[2] = { playerScreenPos.x, playerScreenPos.y };
+        
+        Vector2 playerScreenPos = GetWorldToScreen2D(desiredTarget, camera);
+
+        // Flip Y під OpenGL координати
+        float pos[2] = {
+            playerScreenPos.x,
+            (float)virtualHeight - playerScreenPos.y
+        };
+
         SetShaderValue(lightShader, playerPosLoc, pos, SHADER_UNIFORM_VEC2);
     }
 }

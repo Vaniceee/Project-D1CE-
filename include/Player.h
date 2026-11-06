@@ -22,6 +22,9 @@ public:
     // Геттери для стаміни
     float GetCurrentStamina() const { return currentStamina; }
     float GetMaxStamina() const { return maxStamina; }
+    bool IsMoving() const { return isMoving; }           
+    bool IsSprinting() const { return isSprinting; }     
+    bool IsExhausted() const { return isExhausted; }
 
 private:
     float currentSpeed;
@@ -30,12 +33,14 @@ private:
     int activeNudgeY = 0;
     int activeNudgeX = 0;
 
+    bool isMoving = false;       
+    bool isSprinting = false;
 
     // Стаміна параметри
     float maxStamina = 100.0f;
     float currentStamina = 100.0f;
     float staminaDrainRate = 30.0f;
-    float staminaRegenRate = 20.0f;
+    float staminaRegenRate = 10.0f;
     bool isExhausted = false;
 
 
@@ -62,4 +67,13 @@ private:
     float stepIntervalRun = 0.48f; 
 
     void PlayFootstepSound(bool isSprinting);
+
+    // --- ПАРАМЕТРИ ЗВУКУ ВІДДИШКИ ---
+    bool isPlayingBreath = false;
+    float currentBreathVolume = 0.0f; // Поточна гучність (0.0f .. 0.5f)
+    float targetBreathVolume = 0.0f;  // Цільова гучність (0.5f або 0.0f)
+    float breathFadeSpeed = 2.5f;     // Швидкість плавного затухання/наростання
+
+    void UpdateBreathingSound();
+
 };

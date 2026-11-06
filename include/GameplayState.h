@@ -3,6 +3,7 @@
 #include "GameState.h"
 #include "Player.h"
 #include "raylib.h"
+#include "raymath.h"
 #include "AssetManager.h"
 #include "config.h"
 #include "Map.h"
@@ -20,6 +21,18 @@ private:
 
     Music bgMusic = { 0 };
     Camera2D camera = { 0 };
+    float cameraLerpSpeed = 7.0f;
+    Vector2 cameraCurrentTarget = { 0.0f, 0.0f };
+
+    // --- ПАРАМЕТРИ ПРОЦЕДУРНОГО ПОХИТУВАННЯ (BOBBING / BREATHING) ---
+    float breathTimer = 0.0f;
+    float currentBreathSpeed = 2.0f;
+    float currentAmpX = 1.0f;
+    float currentAmpY = 1.5f;
+    
+    //--------STRESS(TRAUMA SHAKE)----------
+    float trauma = 0.0f;
+    float maxShakeOffset = 6.0f;
 
     const int virtualWidth = 1280;
     const int virtualHeight = 720;

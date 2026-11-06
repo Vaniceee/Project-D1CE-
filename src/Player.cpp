@@ -3,6 +3,7 @@
 #include "Collisions.h"
 #include "AssetManager.h"
 #include "raylib.h"
+#include "raymath.h"
 #include <string>
 
 Player::Player(Vector2 startPos, float startSpeed, float width, float height, Texture2D tex, float playerScale)
@@ -10,6 +11,50 @@ Player::Player(Vector2 startPos, float startSpeed, float width, float height, Te
 
     RecalculateFootCollider();
 }
+
+
+
+
+void Player::UpdateBreathingSound() {
+    Sound breathSound = AssetManager::Instance().GetSound("Breath");
+    if (breathSound.stream.buffer == nullptr) return;
+
+    float dt = GetFrameTime();
+    float staminaRatio = currentStamina / maxStamina;   
+    bool shouldPlay = isExhausted || (staminaRatio < 0.35f);
+    float maxVolume = 0.140f; // Максимальна гучність задишки
+    
+
+    if (shouldPlay) {
+        
+        if (!IsSoundPlaying(breathSound)) {
+            currentBreathVolume = maxVolume;                  
+            SetSoundVolume(breathSound, currentBreathVolume);
+            PlaySound(breathSound);
+        }
+        else {
+            
+            currentBreathVolume = maxVolume;
+            SetSoundVolume(breathSound, currentBreathVolume);
+        }
+    }
+    else {
+        
+        if (currentBreathVolume > 0.01f) {
+            float blendAlpha = 1.0f - expf(-3.5f * dt); 
+            currentBreathVolume = Lerp(currentBreathVolume, 0.0f, blendAlpha);
+            SetSoundVolume(breathSound, currentBreathVolume);
+        }
+        else {
+            
+            if (IsSoundPlaying(breathSound)) {
+                StopSound(breathSound);
+            }
+            currentBreathVolume = 0.0f;
+        }
+    }
+}
+
 
 void Player::RecalculateFootCollider() {
     // Масштабуємо базову ширину та висоту персонажа
@@ -70,11 +115,11 @@ void Player::Update(const GameMap& gameMap) {
     }
 
     // ---- СПРИНТ-------------
-    bool isMoving = (moveDir.x != 0.0f or moveDir.y != 0.0f);
+    isMoving = (moveDir.x != 0.0f or moveDir.y != 0.0f);
     float currentMoveSpeed = speed;
-    bool wantsToSprint = InputManager::IsSprintPressed() && isMoving && !isExhausted;
+    isSprinting = InputManager::IsSprintPressed() && isMoving && !isExhausted;
 
-    if (wantsToSprint) {
+    if (isSprinting) {
 
         currentMoveSpeed *= 1.55f;
         currentStamina -= staminaDrainRate * deltaTime;
@@ -94,13 +139,14 @@ void Player::Update(const GameMap& gameMap) {
         }
     }
 
+
     // ---- ТАЙМЕР ТА ВІДТВОРЕННЯ КРОКІВ ----
     if (isMoving) {
-        float currentInterval = wantsToSprint ? stepIntervalRun : stepIntervalWalk;
+        float currentInterval = isSprinting ? stepIntervalRun : stepIntervalWalk;
         stepTimer += deltaTime;
 
         if (stepTimer >= currentInterval) {
-            PlayFootstepSound(wantsToSprint);
+            PlayFootstepSound(isSprinting);
             stepTimer = 0.0f;
         }
     }
@@ -216,6 +262,8 @@ void Player::Update(const GameMap& gameMap) {
         // Якщо гравець зупинив рух по Y — скидаємо стан
         activeNudgeX = 0;
     }
+
+    UpdateBreathingSound();
 
     // Оновлюємо внутрішній коллайдер після фінального коригування позиції
     collider.x = position.x + footOffsetX;
