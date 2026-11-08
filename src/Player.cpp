@@ -107,11 +107,29 @@ void Player::Update(const GameMap& gameMap) {
     Vector2 moveDir = InputManager::GetMovementDirection();
     float deltaTime = GetFrameTime();
 
-    // ---- ОНОВЛЕННЯ АНІМАЦІЇ IDLE ----
-    animTimer += deltaTime;
-    if (animTimer >= frameSpeed) {
-        animTimer = 0.0f;
-        currentFrame = (currentFrame + 1) % totalFrames; // Перемикання кадрів 0 -> 1 -> 2 -> 3 -> 0
+    // ---- ОНОВЛЕННЯ АНІМАЦІЇ ТА ЗВУКІВ КРОКІВ ----
+    if (isMoving) {
+        frameSpeed = isSprinting ? 0.075f : 0.135f; 
+
+        animTimer += deltaTime;
+        if (animTimer >= frameSpeed) {
+            animTimer = 0.0f;
+            int prevFrame = currentFrame;
+            currentFrame = (currentFrame + 1) % totalFrames;
+
+            
+            if ((currentFrame == 2 || currentFrame == 6) && prevFrame != currentFrame) {
+                PlayFootstepSound(isSprinting);
+            }
+        }
+    }
+    else {
+        frameSpeed = 0.16f;
+        animTimer += deltaTime;
+        if (animTimer >= frameSpeed) {
+            animTimer = 0.0f;
+            currentFrame = (currentFrame + 1) % totalFrames;
+        }
     }
 
     // ---- СПРИНТ-------------
@@ -137,22 +155,6 @@ void Player::Update(const GameMap& gameMap) {
         if (isExhausted && currentStamina >= minStaminaToSprint) {
             isExhausted = false;
         }
-    }
-
-
-    // ---- ТАЙМЕР ТА ВІДТВОРЕННЯ КРОКІВ ----
-    if (isMoving) {
-        float currentInterval = isSprinting ? stepIntervalRun : stepIntervalWalk;
-        stepTimer += deltaTime;
-
-        if (stepTimer >= currentInterval) {
-            PlayFootstepSound(isSprinting);
-            stepTimer = 0.0f;
-        }
-    }
-    else {
-        // Коли стоїмо — підганяємо таймер, щоб перший крок при старті звучав без затримки
-        stepTimer = stepIntervalWalk * 0.8f;
     }
 
     
@@ -279,14 +281,40 @@ void Player::Update(const GameMap& gameMap) {
 
 
 void Player::Draw() {
-    // Якщо текстура підтягнулася — малюємо спрайт та анімацію
+    
     if (texture.id > 0) {
+        PlayerDirection dir = GetCurrentDirection();
+        int rowIndex = 0;
+        bool flipH = false;
+
+        
+        switch (dir) {
+        case PlayerDirection::Up:
+            rowIndex = isMoving ? 4 : 1; // 1: Idle Up, 4: Walk Up
+            break;
+        case PlayerDirection::Left:
+            rowIndex = isMoving ? 5 : 2; // 2: Idle Side, 5: Walk Side
+            flipH = true;               
+            break;
+        case PlayerDirection::Right:
+            rowIndex = isMoving ? 5 : 2; // 2: Idle Side, 5: Walk Side
+            flipH = false;
+            break;
+        case PlayerDirection::Down:
+        case PlayerDirection::None:
+        default:
+            rowIndex = isMoving ? 3 : 0; // 0: Idle Down, 3: Walk Down
+            break;
+        }
+
+       
         Rectangle sourceRec = {
             (float)currentFrame * frameWidth,
-            0.0f,
-            frameWidth,
+            (float)rowIndex * frameHeight,
+            flipH ? -frameWidth : frameWidth,
             frameHeight
         };
+
         float visualOffsetX = -1.5f * scale;
 
         Rectangle destRec = {
@@ -299,12 +327,11 @@ void Player::Draw() {
         DrawTexturePro(texture, sourceRec, destRec, Vector2{ 0.0f, 0.0f }, 0.0f, WHITE);
     }
     else {
-        // Резервний синій заповнювач, якщо текстура відсутня
         DrawRectangleRec({ position.x, position.y, collider.width / 0.6f, collider.height / 0.3f }, BLUE);
     }
 
     // Дебаг: червоний контур хитбокса у ногах
-    DrawRectangleLinesEx(GetFootCollider(), 1.0f, RED);
+   // DrawRectangleLinesEx(GetFootCollider(), 1.0f, RED);
 }
 
 PlayerDirection Player::GetCurrentDirection() const {

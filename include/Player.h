@@ -53,11 +53,11 @@ private:
     // --- ПАРАМЕТРИ АНІМАЦІЇ IDLE ---
     Texture2D texture = { 0 };
     int currentFrame = 0;
-    int totalFrames = 4;
+    int totalFrames = 8;
     float frameWidth = 32.0f;
     float frameHeight = 64.0f;
     float animTimer = 0.0f;
-    float frameSpeed = 0.35f; // Секунд на один кадр
+    float frameSpeed = 0.12f; // Секунд на один кадр
 
     void RecalculateFootCollider();
 

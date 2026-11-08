@@ -27,7 +27,7 @@ void GameplayState::Init() {
     AssetManager& am = AssetManager::Instance();
 
     // Завантаження графіки для рівня
-    am.LoadTexture("player_idle", Config::PATH_PNG_PLAYER_IDLE);
+    am.LoadTexture("player_spritesheet", Config::PATH_PNG_PLAYER_SPRITESHEET);
     am.LoadTexture("1 other objects", Config::PATH_PNG_OTHER_OBJECTS);
     am.LoadTexture("1_FLOOR", Config::PATH_PNG_FLOOR);
     am.LoadTexture("1_RUGS", Config::PATH_PNG_RUGS);
@@ -57,7 +57,7 @@ void GameplayState::Init() {
 
     gameMap.Load(Config::PATH_MAP);
     Vector2 startPos = { 1944.0f, 2464.0f };
-    player = new Player(startPos, 180.0f, 32.0f, 64.0f, am.GetTexture("player_idle"), 1.45f);
+    player = new Player(startPos, 112.0f, 32.0f, 64.0f, am.GetTexture("player_spritesheet"), 1.45f);
 
     camera.target = startPos;
     cameraCurrentTarget = startPos; 
