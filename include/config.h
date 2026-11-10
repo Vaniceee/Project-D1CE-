@@ -20,7 +20,7 @@ namespace Config {
 
 	//--------ГРАВЕЦЬ
 	constexpr const char* PATH_PNG_PLAYER_SPRITESHEET = "assets/player/PlayerAnimations.png";
-
+	constexpr const char* PATH_PNG_CARD_LIVES = "assets/player/LifesAce.png";
 	constexpr const char* PATH_AUDIO_AMBIENT = "assets/music/ambient_1.wav";
 	constexpr const char* PATH_MAP = "map/Casino oop/casino_map_3232.tmj"; // мапа в tmj
 	constexpr const char* PATH_SHADER_LIGHTING = "assets/shaders/lighting.frag";

@@ -12,7 +12,15 @@ Player::Player(Vector2 startPos, float startSpeed, float width, float height, Te
     RecalculateFootCollider();
 }
 
+void Player::TakeDamage(int damage) {
+    if (isInvincible || lives <= 0) return;
 
+    lives -= damage;
+    isInvincible = true;
+    invincibilityTimer = invincibilityDuration;
+
+    TraceLog(LOG_INFO, "PLAYER DAMAGE! Remaining lives: %d", lives);
+}
 
 
 void Player::UpdateBreathingSound() {
@@ -106,6 +114,17 @@ void Player::PlayFootstepSound(bool isSprinting) {
 void Player::Update(const GameMap& gameMap) {
     Vector2 moveDir = InputManager::GetMovementDirection();
     float deltaTime = GetFrameTime();
+
+    // Îáðîáêà òàéìåðà íåâðàçëèâîñò³
+    if (isInvincible) {
+        invincibilityTimer -= deltaTime;
+        if (invincibilityTimer <= 0.0f) {
+            isInvincible = false;
+            invincibilityTimer = 0.0f;
+        }
+    }
+
+
 
     // ---- ÎÍÎÂËÅÍÍß ÀÍ²ÌÀÖ²¯ ÒÀ ÇÂÓÊ²Â ÊÐÎÊ²Â ----
     if (isMoving) {
@@ -281,6 +300,13 @@ void Player::Update(const GameMap& gameMap) {
 
 
 void Player::Draw() {
+
+
+    Color drawTint = WHITE;
+    if (isInvincible) {
+        float alpha = (sinf(GetTime() * 20.0f) > 0.0f) ? 0.3f : 0.8f;
+        drawTint = ColorAlpha(WHITE, alpha);
+    }
     
     if (texture.id > 0) {
         PlayerDirection dir = GetCurrentDirection();
@@ -324,7 +350,7 @@ void Player::Draw() {
             frameHeight * scale,
         };
 
-        DrawTexturePro(texture, sourceRec, destRec, Vector2{ 0.0f, 0.0f }, 0.0f, WHITE);
+        DrawTexturePro(texture, sourceRec, destRec, Vector2{ 0.0f, 0.0f }, 0.0f, drawTint);
     }
     else {
         DrawRectangleRec({ position.x, position.y, collider.width / 0.6f, collider.height / 0.3f }, BLUE);

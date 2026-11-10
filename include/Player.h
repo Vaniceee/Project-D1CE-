@@ -19,6 +19,12 @@ public:
     void SetScale(float newScale);
     float GetScale() const { return scale; }
 
+    //-------Життя та урон------------
+    int GetLives() const { return lives; }
+    bool IsInvincible() const { return isInvincible; }
+    void TakeDamage(int damage = 1);
+
+
     // Геттери для стаміни
     float GetCurrentStamina() const { return currentStamina; }
     float GetMaxStamina() const { return maxStamina; }
@@ -29,6 +35,14 @@ public:
 private:
     float currentSpeed;
     float scale = 1.0f;
+
+
+    //------Життя та урон---------
+    int lives = 3;
+    bool isInvincible = false;
+    float invincibilityTimer = 0.0f;
+    float invincibilityDuration = 1.5f;
+
 
     int activeNudgeY = 0;
     int activeNudgeX = 0;

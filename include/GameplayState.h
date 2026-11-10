@@ -2,11 +2,13 @@
 
 #include "GameState.h"
 #include "Player.h"
+#include "Guard.h"
 #include "raylib.h"
 #include "raymath.h"
 #include "AssetManager.h"
 #include "config.h"
 #include "Map.h"
+
 
 class GameplayState : public GameState {
 public:
@@ -18,11 +20,19 @@ public:
 private:
     GameMap gameMap;
     Player* player = nullptr;
+    Guard* guard = nullptr;
 
     Music bgMusic = { 0 };
     Camera2D camera = { 0 };
     float cameraLerpSpeed = 7.0f;
     Vector2 cameraCurrentTarget = { 0.0f, 0.0f };
+
+
+    // --- UI КАРТИ ЖИТТІВ ---
+    int lastPlayerLives = 3;         
+    float cardFlickerTimer = 0.0f;   
+    float cardFlickerDuration = 0.45f; 
+
 
     // --- ПАРАМЕТРИ ПРОЦЕДУРНОГО ПОХИТУВАННЯ (BOBBING / BREATHING) ---
     float breathTimer = 0.0f;
@@ -51,6 +61,7 @@ private:
     float flickerTimer = 0.0f;
     float currentFlicker = 1.0f;
 
-    // Прапорець для майбутньої паузи (зараз ні на що не впливає)
+    // Прапорці
     bool isPaused = false;
+    bool isGameOverProcessed = false;
 };
