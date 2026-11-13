@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <format>
@@ -33,6 +34,17 @@ static std::string EnsureUtf8(const std::string& raw) {
     return u8str;
 }
 
+static bool IsIgnoredPath(const std::filesystem::path& path) {
+    for (const auto& part : path) {
+        std::string p = part.string();
+        if (p == "raylib" || p == "external" || p == "vendor" || p == "third_party" || p == "build") {
+            return true;
+        }
+    }
+    std::string fname = path.filename().string();
+    return (fname == "raylib.h" || fname == "raymath.h" || fname == "rlgl.h" || fname == "ExportCode.cpp");
+}
+
 void ExportProjectCode() {
     namespace fs = std::filesystem;
     fs::path root(PROJECT_ROOT_DIR);
@@ -46,7 +58,6 @@ void ExportProjectCode() {
     // Додаємо UTF-8 BOM для коректного читання кирилиці
     out.write("\xEF\xBB\xBF", 3);
 
-    // Отримуємо поточну локальну дату та час
     auto now = std::chrono::current_zone()->to_local(std::chrono::system_clock::now());
     std::string timestamp = std::format("{:%d.%m.%Y %H:%M:%S}", std::chrono::floor<std::chrono::seconds>(now));
 
@@ -63,27 +74,38 @@ void ExportProjectCode() {
         out << EnsureUtf8(content) << "\r\n\r\n";
         };
 
-    // 1. Додаємо CMakeLists.txt
+    // 1. CMakeLists.txt
     appendFile(root / "CMakeLists.txt", "CMakeLists.txt");
 
-    // 2. Проходимося по папках include та src
-    std::vector<fs::path> folders = { root / "include", root / "src" };
-    for (const auto& folder : folders) {
-        if (!fs::exists(folder)) continue;
+    // 2. Збираємо шляхи з include, src та assets
+    std::vector<fs::path> collectedFiles;
+
+    auto collectFromFolder = [&](const fs::path& folder, const std::vector<std::string>& allowedExts) {
+        if (!fs::exists(folder)) return;
 
         for (const auto& entry : fs::recursive_directory_iterator(folder)) {
             if (!entry.is_regular_file()) continue;
 
-            // Пропускаємо заголовні файли самої бібліотеки Raylib, якщо вони раптом лежать у include/
-            std::string fname = entry.path().filename().string();
-            if (fname == "raylib.h" || fname == "raymath.h" || fname == "rlgl.h") continue;
+            fs::path relPath = fs::relative(entry.path(), root);
+            if (IsIgnoredPath(relPath)) continue;
 
-            auto ext = entry.path().extension();
-            if (ext == ".cpp" || ext == ".h") {
-                appendFile(entry.path(), fs::relative(entry.path(), root).string());
+            std::string ext = entry.path().extension().string();
+            if (std::find(allowedExts.begin(), allowedExts.end(), ext) != allowedExts.end()) {
+                collectedFiles.push_back(entry.path());
             }
         }
+        };
+
+    collectFromFolder(root / "include", { ".h", ".hpp" });
+    collectFromFolder(root / "src", { ".cpp", ".h", ".hpp" });
+    collectFromFolder(root / "assets", { ".fs", ".vs", ".glsl", ".frag", ".vert" });
+
+    // Сортуємо для охайного порядку в файлі
+    std::sort(collectedFiles.begin(), collectedFiles.end());
+
+    for (const auto& filePath : collectedFiles) {
+        appendFile(filePath, fs::relative(filePath, root).generic_string());
     }
 
-    std::cout << "[ExportProjectCode] Updated all_code.txt at " << timestamp << "\n";
+    std::cout << "[ExportProjectCode] Updated all_code.txt (" << collectedFiles.size() + 1 << " files) at " << timestamp << "\n";
 }
