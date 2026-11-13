@@ -11,6 +11,7 @@
 #include "raymath.h"
 #include <string>
 #include <cmath>
+#include <memory>
 
 class GameplayState : public GameState {
 public:
@@ -23,8 +24,8 @@ private:
     GameMap gameMap;
     RenderSystem renderSystem;
 
-    Player* player = nullptr;
-    Guard* guard = nullptr;
+    std::unique_ptr<Player> player;
+    std::unique_ptr<Guard> guard;
 
     Music bgMusic = { 0 };
     Camera2D camera = { 0 };

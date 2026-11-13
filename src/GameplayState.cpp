@@ -3,7 +3,7 @@
 void GameplayState::Init() {
     targetTexture = LoadRenderTexture(virtualWidth, virtualHeight);
 
-    // === 1. ІНІЦІАЛІЗАЛІЗАЦІЯ ШЕЙДЕРА ОСВІТЛЕННЯ ===
+    // === 1. ІНІЦІАЛІЗАЦІЯ ШЕЙДЕРА ОСВІТЛЕННЯ ===
     lightShader = LoadShader(0, Config::PATH_SHADER_LIGHTING);
 
     playerPosLoc = GetShaderLocation(lightShader, "playerScreenPos");
@@ -48,12 +48,12 @@ void GameplayState::Init() {
 
     // 1. Спавн гравця з мапи
     Vector2 startPos = gameMap.GetPlayerSpawn();
-    player = new Player(startPos, 112.0f, 32.0f, 64.0f, am.GetTexture("player_spritesheet"), 1.45f);
+    player = std::make_unique<Player>(startPos, 112.0f, 32.0f, 64.0f, am.GetTexture("player_spritesheet"), 1.45f);
 
     // 2. Спавн охоронця з мапи (якщо в Tiled поставлена хоча б одна крапка "guard")
     const auto& guardSpawns = gameMap.GetGuardSpawns();
     Vector2 guardPos = !guardSpawns.empty() ? guardSpawns[0] : Vector2{ 2200.0f, 2464.0f };
-    guard = new Guard(guardPos, 70.0f);
+    guard = std::make_unique<Guard>(guardPos, 70.0f);
 
     camera.target = startPos;
     cameraCurrentTarget = startPos;
@@ -84,15 +84,8 @@ void GameplayState::Cleanup() {
         UnloadRenderTexture(targetTexture);
     }
 
-    if (player) {
-        delete player;
-        player = nullptr;
-    }
-
-    if (guard) {
-        delete guard;
-        guard = nullptr;
-    }
+    player.reset();
+    guard.reset();
 
     AssetManager::Instance().UnloadAll();
 }
@@ -219,7 +212,7 @@ void GameplayState::Draw() {
     ClearBackground(BLACK);
 
     BeginMode2D(camera);
-    renderSystem.RenderWorld(gameMap, player, guard);
+    renderSystem.RenderWorld(gameMap, player.get(), guard.get());
     EndMode2D();
 
     EndTextureMode();
