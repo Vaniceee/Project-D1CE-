@@ -22,8 +22,6 @@ void GameplayState::Init() {
 
     AssetManager& am = AssetManager::Instance();
 
-    // Завантаження графіки для персонажа та 4-х тайлових шарів (підлога, стіни, килими)
-    // Усі об'єкти з Collection of Images завантажаться автоматично всередині gameMap.Load()
     am.LoadTexture("player_spritesheet", Config::PATH_PNG_PLAYER_SPRITESHEET);
     am.LoadTexture("floor", Config::PATH_PNG_FLOOR);
     am.LoadTexture("rugs", Config::PATH_PNG_RUGS);
@@ -50,17 +48,13 @@ void GameplayState::Init() {
     Vector2 startPos = gameMap.GetPlayerSpawn();
     player = std::make_unique<Player>(startPos, 112.0f, 32.0f, 64.0f, am.GetTexture("player_spritesheet"), 1.45f);
 
-    // 2. Спавн охоронця з мапи (якщо в Tiled поставлена хоча б одна крапка "guard")
+    // 2. Спавн охоронця з мапи
     const auto& guardSpawns = gameMap.GetGuardSpawns();
     Vector2 guardPos = !guardSpawns.empty() ? guardSpawns[0] : Vector2{ 2200.0f, 2464.0f };
     guard = std::make_unique<Guard>(guardPos, 70.0f);
 
-    camera.target = startPos;
-    cameraCurrentTarget = startPos;
-
-    camera.offset = { (float)virtualWidth / 2.0f, (float)virtualHeight / 2.0f };
-    camera.rotation = 0.0f;
-    camera.zoom = 1.8f;
+    // 3. Ініціалізація камери
+    gameCamera.Init(startPos, virtualWidth, virtualHeight, 1.8f);
 
     //======================MUSIC======================
     AssetManager::Instance().LoadMusic("ambient", Config::PATH_AUDIO_AMBIENT);
@@ -91,10 +85,6 @@ void GameplayState::Cleanup() {
 }
 
 void GameplayState::Update() {
-    // -------------------------------------------------------------------------
-    // ТУТ БУДЕ ЛОГІКА ПАУЗИ В МАЙБУТНЬОМУ
-    // -------------------------------------------------------------------------
-
     if (player) {
         UpdateMusicStream(bgMusic);
         player->Update(gameMap);
@@ -105,6 +95,7 @@ void GameplayState::Update() {
         if (currentLives < lastPlayerLives) {
             cardFlickerTimer = cardFlickerDuration;
             lastPlayerLives = currentLives;
+            gameCamera.AddTrauma(0.55f); // Додатковий струс камери при втраті життя
         }
 
         if (cardFlickerTimer > 0.0f) {
@@ -128,73 +119,21 @@ void GameplayState::Update() {
         // 1. Оновлення тригерів дверей / взаємодій
         gameMap.UpdateDoorTriggers(footCollider);
 
-        // 2. ЦІЛЬОВА ПОЗИЦІЯ ГРАВЦЯ (центр ніг)
+        // 2. Оновлення камери
         Vector2 desiredTarget = {
             footCollider.x + footCollider.width / 2.0f,
             footCollider.y + footCollider.height / 2.0f
         };
+        float staminaRatio = player->GetCurrentStamina() / player->GetMaxStamina();
+        gameCamera.Update(desiredTarget, player->IsMoving(), player->IsSprinting(), player->IsExhausted(), staminaRatio, dt);
 
-        bool isMoving = player->IsMoving();
-        bool isSprinting = player->IsSprinting();
-
-        // Idle -> Walk -> Sprint
-        float targetSpeed = isMoving ? (isSprinting ? 14.0f : 9.0f) : 2.0f;
-        float targetAmpX = isMoving ? (isSprinting ? 1.9f : 1.0f) : 0.5f;
-        float targetAmpY = isMoving ? (isSprinting ? 2.5f : 1.5f) : 0.9f;
-
-        // Плавний перехід параметрів похитування
-        float blendAlpha = 1.0f - expf(-8.0f * dt);
-        currentBreathSpeed = Lerp(currentBreathSpeed, targetSpeed, blendAlpha);
-        currentAmpX = Lerp(currentAmpX, targetAmpX, blendAlpha);
-        currentAmpY = Lerp(currentAmpY, targetAmpY, blendAlpha);
-
-        breathTimer += dt * currentBreathSpeed;
-
-        // Фігура Ліссажу
-        Vector2 breathOffset = {
-            cosf(breathTimer * 0.5f) * currentAmpX,
-            sinf(breathTimer) * currentAmpY
-        };
-
-        // --- 2. НАКОПИЧЕННЯ ТА ЗГАСАННЯ ТРАВМИ (TRAUMA SHAKE) ---
-        if (player->IsExhausted()) {
-            if (trauma < 0.40f) trauma = 0.40f;
-        }
-        else {
-            float staminaRatio = player->GetCurrentStamina() / player->GetMaxStamina();
-            if (staminaRatio < 0.35f) {
-                float lowStaminaFactor = (0.35f - staminaRatio) / 0.35f;
-                float targetTrauma = lowStaminaFactor * 0.22f;
-                if (trauma < targetTrauma) trauma = targetTrauma;
-            }
-        }
-
-        // Поступове заспокоєння камери з часом
-        if (trauma > 0.0f) {
-            trauma -= dt * 0.7f;
-            if (trauma < 0.0f) trauma = 0.0f;
-        }
-
-        // Розрахунок квадратичної інтенсивності зсуву (trauma^2)
-        float shakeIntensity = trauma * trauma;
-        Vector2 shakeOffset = {
-            ((float)GetRandomValue(-100, 100) / 100.0f) * maxShakeOffset * shakeIntensity,
-            ((float)GetRandomValue(-100, 100) / 100.0f) * maxShakeOffset * shakeIntensity
-        };
-
-        // 3. ПЛАВНЕ СЛІДУВАННЯ КАМЕРИ
-        float cameraAlpha = 1.0f - expf(-cameraLerpSpeed * dt);
-        cameraCurrentTarget = Vector2Lerp(cameraCurrentTarget, desiredTarget, cameraAlpha);
-
-        camera.target = Vector2Add(cameraCurrentTarget, Vector2Add(breathOffset, shakeOffset));
-
-        // 4. Мерехтіння та передача позиції гравця в шейдер
+        // 3. Мерехтіння та передача позиції гравця в шейдер
         flickerTimer += dt;
         float noise = (float)GetRandomValue(-10, 10) / 900.0f;
         currentFlicker = 1.0f + (sinf(flickerTimer * 10.0f) * 0.025f) + noise;
         SetShaderValue(lightShader, flickerLoc, &currentFlicker, SHADER_UNIFORM_FLOAT);
 
-        Vector2 playerScreenPos = GetWorldToScreen2D(desiredTarget, camera);
+        Vector2 playerScreenPos = gameCamera.GetScreenPosition(desiredTarget);
 
         // Flip Y під OpenGL координати
         float pos[2] = {
@@ -211,7 +150,7 @@ void GameplayState::Draw() {
     BeginTextureMode(targetTexture);
     ClearBackground(BLACK);
 
-    BeginMode2D(camera);
+    BeginMode2D(gameCamera.GetCamera());
     renderSystem.RenderWorld(gameMap, player.get(), guard.get());
     EndMode2D();
 
@@ -288,7 +227,7 @@ void GameplayState::Draw() {
                 frameHeight
             };
 
-            Vector2 cardPos = { 55.0f, 105.0f }; // Позиція над стаміною
+            Vector2 cardPos = { 55.0f, 105.0f };
             float cardScale = 4.5f;
 
             Color cardColor = WHITE;

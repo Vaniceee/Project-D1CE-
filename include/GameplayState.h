@@ -5,6 +5,7 @@
 #include "Guard.h"
 #include "Map.h"
 #include "RenderSystem.h"
+#include "GameCamera.h"
 #include "AssetManager.h"
 #include "config.h"
 #include "raylib.h"
@@ -23,29 +24,17 @@ public:
 private:
     GameMap gameMap;
     RenderSystem renderSystem;
+    GameCamera gameCamera;
 
     std::unique_ptr<Player> player;
     std::unique_ptr<Guard> guard;
 
     Music bgMusic = { 0 };
-    Camera2D camera = { 0 };
-    float cameraLerpSpeed = 7.0f;
-    Vector2 cameraCurrentTarget = { 0.0f, 0.0f };
 
     // --- UI КАРТИ ЖИТТІВ ---
     int lastPlayerLives = 3;
     float cardFlickerTimer = 0.0f;
     float cardFlickerDuration = 0.45f;
-
-    // --- ПАРАМЕТРИ ПРОЦЕДУРНОГО ПОХИТУВАННЯ (BOBBING / BREATHING) ---
-    float breathTimer = 0.0f;
-    float currentBreathSpeed = 2.0f;
-    float currentAmpX = 1.0f;
-    float currentAmpY = 1.5f;
-
-    // -------- STRESS (TRAUMA SHAKE) ----------
-    float trauma = 0.0f;
-    float maxShakeOffset = 6.0f;
 
     const int virtualWidth = 1280;
     const int virtualHeight = 720;
