@@ -1,14 +1,14 @@
 #pragma once
+
 #include "GameState.h"
 #include "Player.h"
 #include "Guard.h"
-#include "raylib.h"
-#include "raymath.h"
+#include "Map.h"
+#include "RenderSystem.h"
 #include "AssetManager.h"
 #include "config.h"
-#include "Map.h"
-#include <algorithm>
-#include <vector>
+#include "raylib.h"
+#include "raymath.h"
 #include <string>
 #include <cmath>
 
@@ -21,6 +21,8 @@ public:
 
 private:
     GameMap gameMap;
+    RenderSystem renderSystem;
+
     Player* player = nullptr;
     Guard* guard = nullptr;
 

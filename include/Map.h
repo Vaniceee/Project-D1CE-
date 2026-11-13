@@ -1,4 +1,5 @@
 #pragma once
+
 #include "raylib.h"
 #include <vector>
 #include <string>
@@ -8,11 +9,9 @@
 struct TilesetInfo {
     int firstgid = 1;
     std::string name;
-    Texture2D texture = { 0 }; // Для звичайних спрайтшитів (папка tiles)
+    Texture2D texture = { 0 };
     int tileWidth = 32;
     int tileHeight = 32;
-
-    // Для Collection of Images (папка objects): локальний ID -> окрема текстура
     std::unordered_map<int, Texture2D> individualTextures;
 };
 
@@ -22,39 +21,11 @@ struct MapVisualObject {
     float y = 0.0f; // У Tiled для тайл-об'єктів це НИЖНІЙ лівий кут
     float width = 0.0f;
     float height = 0.0f;
-    int layerOrder = 0; // Порядок шару для об'єктів з однаковим Y
+    int layerOrder = 0;
 };
 
-struct RenderItem {
-    float sortY;
-    int order;
-    enum class Type { MAP_OBJECT, PLAYER, GUARD } type;
-    const MapVisualObject* mapObj = nullptr;
-};
-
-class GameMap {
-public:
-    bool Load(const std::string& mapPath, const std::string& defaultTilesetKey = "");
-    void Unload();
-
-    void DrawBelowPlayer();
-    void DrawAbovePlayer();
-    void DrawVisualObject(const MapVisualObject& obj) const;
-
-    bool CheckWallCollision(Rectangle playerHitbox) const;
-    void UpdateDoorTriggers(Rectangle playerHitbox);
-
-    int GetWidth() const { return mapWidth; }
-    int GetHeight() const { return mapHeight; }
-    int GetTileWidth() const { return tileWidth; }
-    int GetTileHeight() const { return tileHeight; }
-    const std::string& GetCurrentDoorMessage() const { return currentDoorMessage; }
-    const std::vector<MapVisualObject>& GetVisualObjects() const { return visualObjects; }
-
-    Vector2 GetPlayerSpawn() const { return playerSpawn; }
-    const std::vector<Vector2>& GetGuardSpawns() const { return guardSpawns; }
-
-private:
+// Контейнер для всіх даних, які наповнює MapParser
+struct MapData {
     int mapWidth = 0;
     int mapHeight = 0;
     int tileWidth = 32;
@@ -68,15 +39,37 @@ private:
     std::vector<std::string> doorNumbers;
     std::vector<MapVisualObject> visualObjects;
 
+    Vector2 playerSpawn = { 1944.0f, 2464.0f };
+    std::vector<Vector2> guardSpawns;
+};
+
+class GameMap {
+public:
+    bool Load(const std::string& mapPath, const std::string& defaultTilesetKey = "");
+    void Unload();
+
+    // Рендеринг
+    void DrawBelowPlayer() const;
+    void DrawAbovePlayer() const;
+    void DrawVisualObject(const MapVisualObject& obj) const;
+
+    // Ігрова логіка
+    bool CheckWallCollision(Rectangle playerHitbox) const;
+    void UpdateDoorTriggers(Rectangle playerHitbox);
+
+    // Гетери
+    int GetWidth() const { return data.mapWidth; }
+    int GetHeight() const { return data.mapHeight; }
+    int GetTileWidth() const { return data.tileWidth; }
+    int GetTileHeight() const { return data.tileHeight; }
+    const std::string& GetCurrentDoorMessage() const { return currentDoorMessage; }
+    const std::vector<MapVisualObject>& GetVisualObjects() const { return data.visualObjects; }
+    Vector2 GetPlayerSpawn() const { return data.playerSpawn; }
+    const std::vector<Vector2>& GetGuardSpawns() const { return data.guardSpawns; }
+
+private:
+    MapData data;
     std::string currentDoorMessage = "";
 
-    Vector2 playerSpawn = { 1944.0f, 2464.0f }; // Значення за замовчуванням
-    std::vector<Vector2> guardSpawns;
-
-    void ParseSpawnLayer(const std::string& content, const std::string& layerName);
-
-    std::vector<int> ParseCSV(const std::string& content, const std::string& layerName);
-    void ParseObjectLayer(const std::string& content, const std::string& layerName, std::vector<Rectangle>& rects, std::vector<std::string>* names);
-    void ParseVisualObjectLayer(const std::string& content, const std::string& layerName, int layerOrder);
-    void DrawSingleLayer(const std::vector<int>& layerData);
+    void DrawSingleLayer(const std::vector<int>& layerData) const;
 };

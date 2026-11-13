@@ -3,7 +3,7 @@
 void GameplayState::Init() {
     targetTexture = LoadRenderTexture(virtualWidth, virtualHeight);
 
-    // === 1. ІНІЦІАЛІЗАЦІЯ ШЕЙДЕРА ОСВІТЛЕННЯ ===
+    // === 1. ІНІЦІАЛІЗАЛІЗАЦІЯ ШЕЙДЕРА ОСВІТЛЕННЯ ===
     lightShader = LoadShader(0, Config::PATH_SHADER_LIGHTING);
 
     playerPosLoc = GetShaderLocation(lightShader, "playerScreenPos");
@@ -214,61 +214,12 @@ void GameplayState::Update() {
 }
 
 void GameplayState::Draw() {
-    // 1. РЕНДЕРИНГ ІГРОВОГО СВІТУ (малюємо всередині текстури рендерингу)
+    // 1. РЕНДЕРИНГ ІГРОВОГО СВІТУ (через RenderSystem з Y-сортуванням)
     BeginTextureMode(targetTexture);
     ClearBackground(BLACK);
 
     BeginMode2D(camera);
-
-    // Спершу малюємо тайли, що знаходяться ПІД гравцем (підлога, килими тощо)
-    gameMap.DrawBelowPlayer();
-
-    // Збираємо всі об'єкти для Y-сортування (меблі/об'єкти мапи, гравець, охоронець)
-    std::vector<RenderItem> renderList;
-    const auto& mapObjects = gameMap.GetVisualObjects();
-    renderList.reserve(mapObjects.size() + 2);
-
-    for (const auto& obj : mapObjects) {
-        // obj.y у Tiled відповідає нижній межі картинки
-        renderList.push_back({ obj.y, obj.layerOrder, RenderItem::Type::MAP_OBJECT, &obj });
-    }
-
-    if (player) {
-        Rectangle foot = player->GetFootCollider();
-        renderList.push_back({ foot.y + foot.height, 100, RenderItem::Type::PLAYER, nullptr });
-    }
-
-    if (guard) {
-        Rectangle guardFoot = guard->GetFootCollider();
-        renderList.push_back({ guardFoot.y + guardFoot.height, 100, RenderItem::Type::GUARD, nullptr });
-    }
-
-    // Сортуємо зверху вниз за координатою Y
-    std::sort(renderList.begin(), renderList.end(), [](const RenderItem& a, const RenderItem& b) {
-        if (std::abs(a.sortY - b.sortY) < 0.01f) {
-            return a.order < b.order;
-        }
-        return a.sortY < b.sortY;
-        });
-
-    // Малюємо у відсортованому порядку глибини
-    for (const auto& item : renderList) {
-        switch (item.type) {
-        case RenderItem::Type::MAP_OBJECT:
-            gameMap.DrawVisualObject(*item.mapObj);
-            break;
-        case RenderItem::Type::PLAYER:
-            player->Draw();
-            break;
-        case RenderItem::Type::GUARD:
-            guard->Draw();
-            break;
-        }
-    }
-
-    // Потім малюємо шари НАД гравцем (дах, верхні частини стін тощо)
-    gameMap.DrawAbovePlayer();
-
+    renderSystem.RenderWorld(gameMap, player, guard);
     EndMode2D();
 
     EndTextureMode();
