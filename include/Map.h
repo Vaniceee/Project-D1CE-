@@ -51,6 +51,9 @@ public:
     const std::string& GetCurrentDoorMessage() const { return currentDoorMessage; }
     const std::vector<MapVisualObject>& GetVisualObjects() const { return visualObjects; }
 
+    Vector2 GetPlayerSpawn() const { return playerSpawn; }
+    const std::vector<Vector2>& GetGuardSpawns() const { return guardSpawns; }
+
 private:
     int mapWidth = 0;
     int mapHeight = 0;
@@ -66,6 +69,11 @@ private:
     std::vector<MapVisualObject> visualObjects;
 
     std::string currentDoorMessage = "";
+
+    Vector2 playerSpawn = { 1944.0f, 2464.0f }; // Значення за замовчуванням
+    std::vector<Vector2> guardSpawns;
+
+    void ParseSpawnLayer(const std::string& content, const std::string& layerName);
 
     std::vector<int> ParseCSV(const std::string& content, const std::string& layerName);
     void ParseObjectLayer(const std::string& content, const std::string& layerName, std::vector<Rectangle>& rects, std::vector<std::string>* names);

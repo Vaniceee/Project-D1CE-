@@ -45,9 +45,15 @@ void GameplayState::Init() {
     am.LoadTexture("card_lives", Config::PATH_PNG_CARD_LIVES);
 
     gameMap.Load(Config::PATH_MAP);
-    Vector2 startPos = { 5888.0f, 6016.0f };
+
+    // 1. Спавн гравця з мапи
+    Vector2 startPos = gameMap.GetPlayerSpawn();
     player = new Player(startPos, 112.0f, 32.0f, 64.0f, am.GetTexture("player_spritesheet"), 1.45f);
-    guard = new Guard({ 6176.0f, 5824.0f }, 70.0f);
+
+    // 2. Спавн охоронця з мапи (якщо в Tiled поставлена хоча б одна крапка "guard")
+    const auto& guardSpawns = gameMap.GetGuardSpawns();
+    Vector2 guardPos = !guardSpawns.empty() ? guardSpawns[0] : Vector2{ 2200.0f, 2464.0f };
+    guard = new Guard(guardPos, 70.0f);
 
     camera.target = startPos;
     cameraCurrentTarget = startPos;

@@ -318,6 +318,12 @@ bool GameMap::Load(const std::string& mapPath, const std::string& defaultTileset
             ParseObjectLayer(content, layerName, doorTriggers, &doorNumbers);
             GAME_DEBUG("MAP", "Auto-detected TRIGGER/DOOR object layer: '%s'", layerName.c_str());
         }
+        else if (lowerLayerName.find("spawn") != std::string::npos ||
+            lowerLayerName.find("entit") != std::string::npos)
+        {
+            ParseSpawnLayer(content, layerName);
+            GAME_DEBUG("MAP", "Auto-detected SPAWN object layer: '%s'", layerName.c_str());
+        }
         else {
             ParseVisualObjectLayer(content, layerName, visualLayerIndex++);
             GAME_DEBUG("MAP", "Auto-detected VISUAL object layer: '%s'", layerName.c_str());
@@ -341,6 +347,7 @@ void GameMap::Unload() {
     doorTriggers.clear();
     doorNumbers.clear();
     visualObjects.clear();
+    guardSpawns.clear();
     currentDoorMessage = "";
 }
 
@@ -526,6 +533,67 @@ void GameMap::DrawVisualObject(const MapVisualObject& obj) const {
     DrawTexturePro(tex, srcRec, destRec, origin, rotation, WHITE);
 }
 
+void GameMap::ParseSpawnLayer(const std::string& content, const std::string& layerName) {
+    size_t layerPos = content.find("\"name\":\"" + layerName + "\"");
+    if (layerPos == std::string::npos) return;
+
+    size_t objectsPos = content.find("\"objects\":[", layerPos);
+    if (objectsPos == std::string::npos) return;
+
+    size_t endObjects = objectsPos + 11;
+    int bracketDepth = 1;
+    while (endObjects < content.size() && bracketDepth > 0) {
+        if (content[endObjects] == '[') bracketDepth++;
+        else if (content[endObjects] == ']') bracketDepth--;
+        endObjects++;
+    }
+
+    std::string objectsText = content.substr(objectsPos, endObjects - objectsPos);
+    size_t objStart = objectsText.find("{");
+
+    while (objStart != std::string::npos) {
+        size_t objEnd = objStart + 1;
+        int braceDepth = 1;
+        while (objEnd < objectsText.size() && braceDepth > 0) {
+            if (objectsText[objEnd] == '{') braceDepth++;
+            else if (objectsText[objEnd] == '}') braceDepth--;
+            objEnd++;
+        }
+
+        std::string obj = objectsText.substr(objStart, objEnd - objStart);
+
+        auto getFloat = [&](const std::string& key) -> float {
+            size_t pos = obj.find("\"" + key + "\":");
+            if (pos == std::string::npos) return 0.0f;
+            size_t startValue = pos + key.length() + 3;
+            size_t endValue = obj.find_first_of(",}", startValue);
+            try { return std::stof(obj.substr(startValue, endValue - startValue)); }
+            catch (...) { return 0.0f; }
+            };
+
+        float x = getFloat("x");
+        float y = getFloat("y");
+
+        // Зчитуємо ім'я об'єкта ("player" або "guard")
+        size_t namePos = obj.find("\"name\":\"");
+        if (namePos != std::string::npos) {
+            size_t nameStart = namePos + 8;
+            size_t nameEnd = obj.find("\"", nameStart);
+            std::string spawnName = ToLower(obj.substr(nameStart, nameEnd - nameStart));
+
+            if (spawnName == "player") {
+                playerSpawn = { x, y };
+                GAME_INFO("MAP", "Player spawn set to: (%.1f, %.1f)", x, y);
+            }
+            else if (spawnName == "guard") {
+                guardSpawns.push_back({ x, y });
+                GAME_INFO("MAP", "Guard spawn added at: (%.1f, %.1f)", x, y);
+            }
+        }
+
+        objStart = objectsText.find("{", objEnd);
+    }
+}
 
 // ПАРСИНГ ШАРУ ВІЗУАЛЬНИХ ОБ'ЄКТІВ (З GID)
 void GameMap::ParseVisualObjectLayer(const std::string& content, const std::string& layerName, int layerOrder) {

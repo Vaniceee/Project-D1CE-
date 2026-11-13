@@ -1090,6 +1090,43 @@
                  "layers":[
                         {
                          "draworder":"topdown",
+                         "id":20,
+                         "name":"Spawns",
+                         "objects":[
+                                {
+                                 "height":0,
+                                 "id":72,
+                                 "name":"Player",
+                                 "opacity":1,
+                                 "point":true,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":5900,
+                                 "y":6020.66666666667
+                                }, 
+                                {
+                                 "height":0,
+                                 "id":73,
+                                 "name":"guard",
+                                 "opacity":1,
+                                 "point":true,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":6193.33333333333,
+                                 "y":5898.66666666667
+                                }],
+                         "opacity":1,
+                         "type":"objectgroup",
+                         "visible":true,
+                         "x":0,
+                         "y":0
+                        }, 
+                        {
+                         "draworder":"topdown",
                          "id":6,
                          "name":"Collisions",
                          "objects":[
@@ -1448,8 +1485,8 @@
          "x":0,
          "y":0
         }],
- "nextlayerid":20,
- "nextobjectid":72,
+ "nextlayerid":21,
+ "nextobjectid":75,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.2",
