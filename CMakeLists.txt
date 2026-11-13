@@ -19,6 +19,8 @@ file(GLOB SOURCES "src/*.cpp")
 # --- ВИПРАВЛЕННЯ: Спершу створюємо виконуваний файл таргета ---
 add_executable(${PROJECT_NAME} ${SOURCES})
 
+target_compile_definitions(${PROJECT_NAME} PRIVATE PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}")
+
 # Add source to this project's executable.
 target_include_directories(${PROJECT_NAME} PRIVATE . ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
