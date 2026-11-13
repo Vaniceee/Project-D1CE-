@@ -1,8 +1,4 @@
 #include "GameplayState.h"
-#include "raymath.h"
-#include <string>
-#include <cmath>
-
 
 void GameplayState::Init() {
     targetTexture = LoadRenderTexture(virtualWidth, virtualHeight);
@@ -26,18 +22,13 @@ void GameplayState::Init() {
 
     AssetManager& am = AssetManager::Instance();
 
-    // Завантаження графіки для рівня
+    // Завантаження графіки для персонажа та 4-х тайлових шарів (підлога, стіни, килими)
+    // Усі об'єкти з Collection of Images завантажаться автоматично всередині gameMap.Load()
     am.LoadTexture("player_spritesheet", Config::PATH_PNG_PLAYER_SPRITESHEET);
-    am.LoadTexture("1 other objects", Config::PATH_PNG_OTHER_OBJECTS);
-    am.LoadTexture("1_FLOOR", Config::PATH_PNG_FLOOR);
-    am.LoadTexture("1_RUGS", Config::PATH_PNG_RUGS);
-    am.LoadTexture("Playing tables", Config::PATH_PNG_PLAYING_TABLES);
-    am.LoadTexture("Slot_machines", Config::PATH_PNG_SLOT_MACHINES);
-    am.LoadTexture("WALLS 1 32x32", Config::PATH_PNG_WALLS_1);
-    am.LoadTexture("WALLS 2 32x32", Config::PATH_PNG_WALLS_2);
-    am.LoadTexture("Slot machine side", Config::PATH_PNG_SLOT_MACHINE_SIDE);
-    am.LoadTexture("Tables 1", Config::PATH_PNG_TABLES_1);
-    am.LoadTexture("Couches 1", Config::PATH_PNG_COUCHES_1);
+    am.LoadTexture("floor", Config::PATH_PNG_FLOOR);
+    am.LoadTexture("rugs", Config::PATH_PNG_RUGS);
+    am.LoadTexture("walls", Config::PATH_PNG_WALLS_1);
+    am.LoadTexture("walls1", Config::PATH_PNG_WALLS_2);
 
     for (int i = 0; i <= 10; ++i) {
         std::string name = "stamina_" + std::to_string(i);
@@ -45,24 +36,22 @@ void GameplayState::Init() {
         am.LoadTexture(name, path);
     }
 
-
     am.LoadSound("step_wood_1", Config::PATH_STEP_WOOD_1);
     am.LoadSound("step_wood_2", Config::PATH_STEP_WOOD_2);
     am.LoadSound("step_wood_3", Config::PATH_STEP_WOOD_3);
     am.LoadSound("step_wood_4", Config::PATH_STEP_WOOD_4);
     am.LoadSound("Breath", "assets/player/Breath.wav");
-    
+
     am.LoadTexture("card_lives", Config::PATH_PNG_CARD_LIVES);
 
-
     gameMap.Load(Config::PATH_MAP);
-    Vector2 startPos = { 1944.0f, 2464.0f };
+    Vector2 startPos = { 5888.0f, 6016.0f };
     player = new Player(startPos, 112.0f, 32.0f, 64.0f, am.GetTexture("player_spritesheet"), 1.45f);
-    guard = new Guard({ 2200.0f, 2464.0f }, 70.0f);
+    guard = new Guard({ 6176.0f, 5824.0f }, 70.0f);
 
     camera.target = startPos;
-    cameraCurrentTarget = startPos; 
-   
+    cameraCurrentTarget = startPos;
+
     camera.offset = { (float)virtualWidth / 2.0f, (float)virtualHeight / 2.0f };
     camera.rotation = 0.0f;
     camera.zoom = 1.8f;
@@ -79,7 +68,6 @@ void GameplayState::Init() {
 }
 
 void GameplayState::Cleanup() {
-    // Вивантажуємо мапу
     gameMap.Unload();
 
     if (lightShader.id != 0) {
@@ -133,10 +121,8 @@ void GameplayState::Update() {
         // Перевірка на кінець життів
         if (player->GetLives() <= 0 && !isGameOverProcessed) {
             TraceLog(LOG_WARNING, "GAME OVER! Player died.");
-            isGameOverProcessed = true; 
+            isGameOverProcessed = true;
         }
-
-
 
         Rectangle footCollider = player->GetFootCollider();
 
@@ -149,13 +135,10 @@ void GameplayState::Update() {
             footCollider.y + footCollider.height / 2.0f
         };
 
-        
-
-      
         bool isMoving = player->IsMoving();
         bool isSprinting = player->IsSprinting();
 
-        // Idle  -> Walk  -> Sprint 
+        // Idle -> Walk -> Sprint
         float targetSpeed = isMoving ? (isSprinting ? 14.0f : 9.0f) : 2.0f;
         float targetAmpX = isMoving ? (isSprinting ? 1.9f : 1.0f) : 0.5f;
         float targetAmpY = isMoving ? (isSprinting ? 2.5f : 1.5f) : 0.9f;
@@ -176,11 +159,9 @@ void GameplayState::Update() {
 
         // --- 2. НАКОПИЧЕННЯ ТА ЗГАСАННЯ ТРАВМИ (TRAUMA SHAKE) ---
         if (player->IsExhausted()) {
-            // При повному виснаженні фіксуємо мінімальний рівень травми
             if (trauma < 0.40f) trauma = 0.40f;
         }
         else {
-            // Якщо стаміна менше 35%, додаємо м'яку мікро-вібрацію
             float staminaRatio = player->GetCurrentStamina() / player->GetMaxStamina();
             if (staminaRatio < 0.35f) {
                 float lowStaminaFactor = (0.35f - staminaRatio) / 0.35f;
@@ -202,11 +183,10 @@ void GameplayState::Update() {
             ((float)GetRandomValue(-100, 100) / 100.0f) * maxShakeOffset * shakeIntensity
         };
 
-        // 3. ПЛАВНЕ СЛІДУВАННЯ КАМЕРИ 
+        // 3. ПЛАВНЕ СЛІДУВАННЯ КАМЕРИ
         float cameraAlpha = 1.0f - expf(-cameraLerpSpeed * dt);
         cameraCurrentTarget = Vector2Lerp(cameraCurrentTarget, desiredTarget, cameraAlpha);
 
-        
         camera.target = Vector2Add(cameraCurrentTarget, Vector2Add(breathOffset, shakeOffset));
 
         // 4. Мерехтіння та передача позиції гравця в шейдер
@@ -215,7 +195,6 @@ void GameplayState::Update() {
         currentFlicker = 1.0f + (sinf(flickerTimer * 10.0f) * 0.025f) + noise;
         SetShaderValue(lightShader, flickerLoc, &currentFlicker, SHADER_UNIFORM_FLOAT);
 
-        
         Vector2 playerScreenPos = GetWorldToScreen2D(desiredTarget, camera);
 
         // Flip Y під OpenGL координати
@@ -238,13 +217,47 @@ void GameplayState::Draw() {
     // Спершу малюємо тайли, що знаходяться ПІД гравцем (підлога, килими тощо)
     gameMap.DrawBelowPlayer();
 
-    if (player) {
-        player->Draw();
+    // Збираємо всі об'єкти для Y-сортування (меблі/об'єкти мапи, гравець, охоронець)
+    std::vector<RenderItem> renderList;
+    const auto& mapObjects = gameMap.GetVisualObjects();
+    renderList.reserve(mapObjects.size() + 2);
+
+    for (const auto& obj : mapObjects) {
+        // obj.y у Tiled відповідає нижній межі картинки
+        renderList.push_back({ obj.y, obj.layerOrder, RenderItem::Type::MAP_OBJECT, &obj });
     }
 
-    //  малювання НПС-мутанта
+    if (player) {
+        Rectangle foot = player->GetFootCollider();
+        renderList.push_back({ foot.y + foot.height, 100, RenderItem::Type::PLAYER, nullptr });
+    }
+
     if (guard) {
-        guard->Draw();
+        Rectangle guardFoot = guard->GetFootCollider();
+        renderList.push_back({ guardFoot.y + guardFoot.height, 100, RenderItem::Type::GUARD, nullptr });
+    }
+
+    // Сортуємо зверху вниз за координатою Y
+    std::sort(renderList.begin(), renderList.end(), [](const RenderItem& a, const RenderItem& b) {
+        if (std::abs(a.sortY - b.sortY) < 0.01f) {
+            return a.order < b.order;
+        }
+        return a.sortY < b.sortY;
+        });
+
+    // Малюємо у відсортованому порядку глибини
+    for (const auto& item : renderList) {
+        switch (item.type) {
+        case RenderItem::Type::MAP_OBJECT:
+            gameMap.DrawVisualObject(*item.mapObj);
+            break;
+        case RenderItem::Type::PLAYER:
+            player->Draw();
+            break;
+        case RenderItem::Type::GUARD:
+            guard->Draw();
+            break;
+        }
     }
 
     // Потім малюємо шари НАД гравцем (дах, верхні частини стін тощо)
@@ -280,28 +293,25 @@ void GameplayState::Draw() {
     EndShaderMode();
 
     // -------------------------------------------------------------------------
-    //  ВІДОБРАЖЕННЯ ІНТЕРФЕЙСУ 
+    // ВІДОБРАЖЕННЯ ІНТЕРФЕЙСУ
     // -------------------------------------------------------------------------
-    Texture2D cardTex = AssetManager::Instance().GetTexture("card_lives");
     if (player) {
         // --- ШКАЛА СТАМІНИ ---
         float staminaRatio = player->GetCurrentStamina() / player->GetMaxStamina();
         if (staminaRatio < 0.0f) staminaRatio = 0.0f;
         if (staminaRatio > 1.0f) staminaRatio = 1.0f;
 
-       
         int staminaFrame = (int)std::round(staminaRatio * 10.0f);
 
         std::string staminaTexName = "stamina_" + std::to_string(staminaFrame);
         Texture2D staminaTex = AssetManager::Instance().GetTexture(staminaTexName);
 
         if (staminaTex.id > 0) {
-            Vector2 position = { 20.0f, 400.0f }; 
-            float scaleTex = 2.5f;                
+            Vector2 position = { 20.0f, 400.0f };
+            float scaleTex = 2.5f;
             float rotation = 270.0f;
 
             DrawTextureEx(staminaTex, position, rotation, scaleTex, WHITE);
-            
         }
 
         // --- ВІДОБРАЖЕННЯ КАРТИ ЖИТТІВ (4 кадри 32x32, спрайтшит 128x32) ---
@@ -329,7 +339,7 @@ void GameplayState::Draw() {
             };
 
             Vector2 cardPos = { 55.0f, 105.0f }; // Позиція над стаміною
-            float cardScale = 4.5f;              // Розмір 80x80 px
+            float cardScale = 4.5f;
 
             Color cardColor = WHITE;
             Vector2 shakeOffset = { 0.0f, 0.0f };
@@ -351,8 +361,6 @@ void GameplayState::Draw() {
 
             DrawTexturePro(cardTex, cardSourceRec, cardDestRec, Vector2{ 0.0f, 0.0f }, 0.0f, cardColor);
         }
-
-
 
         // --- ДЕБАГ ПАНЕЛЬ ---
         Rectangle foot = player->GetFootCollider();

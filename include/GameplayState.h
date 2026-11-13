@@ -1,5 +1,4 @@
 #pragma once
-
 #include "GameState.h"
 #include "Player.h"
 #include "Guard.h"
@@ -8,7 +7,10 @@
 #include "AssetManager.h"
 #include "config.h"
 #include "Map.h"
-
+#include <algorithm>
+#include <vector>
+#include <string>
+#include <cmath>
 
 class GameplayState : public GameState {
 public:
@@ -27,20 +29,18 @@ private:
     float cameraLerpSpeed = 7.0f;
     Vector2 cameraCurrentTarget = { 0.0f, 0.0f };
 
-
     // --- UI КАРТИ ЖИТТІВ ---
-    int lastPlayerLives = 3;         
-    float cardFlickerTimer = 0.0f;   
-    float cardFlickerDuration = 0.45f; 
-
+    int lastPlayerLives = 3;
+    float cardFlickerTimer = 0.0f;
+    float cardFlickerDuration = 0.45f;
 
     // --- ПАРАМЕТРИ ПРОЦЕДУРНОГО ПОХИТУВАННЯ (BOBBING / BREATHING) ---
     float breathTimer = 0.0f;
     float currentBreathSpeed = 2.0f;
     float currentAmpX = 1.0f;
     float currentAmpY = 1.5f;
-    
-    //--------STRESS(TRAUMA SHAKE)----------
+
+    // -------- STRESS (TRAUMA SHAKE) ----------
     float trauma = 0.0f;
     float maxShakeOffset = 6.0f;
 
