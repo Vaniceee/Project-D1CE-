@@ -3,6 +3,8 @@
 #include "Player.h"
 #include "raylib.h"
 
+class GameMap;
+
 enum class GuardState {
     PATROL,
     INVESTIGATE,
@@ -14,7 +16,7 @@ public:
     Guard(Vector2 startPos, float startSpeed = 120.0f, float width = 32.0f, float height = 64.0f);
 
     void Update() override {}
-    void Update(Player& player, float dt);
+    void Update(Player& player, const GameMap& gameMap, float dt);
     void Draw() override;
 
     GuardState GetCurrentState() const { return currentState; }
@@ -25,16 +27,19 @@ private:
     float scale = 1.0f;
 
     // Параметри виявлення та атаки
-    float detectionRadius = 200.0f; // Радіус виявлення гравця
-    float attackRadius = 42.0f;     // Радіус нанесення шкоди
+    float detectionRadius = 200.0f;
+    float attackRadius = 42.0f;
 
-
-    // --- МЕХАНІКА КД ТА СПОВІЛЬНЕННЯ ---
+    // Механіка КД та сповільнення
     float attackCooldownTimer = 0.0f;
-    float attackCooldownDuration = 1.8f; // КД на наступний удар 
+    float attackCooldownDuration = 1.8f;
     float slowdownFactor = 0.25f;
 
-    // Розміри коллайдера ніг (для майбутніх колізій зі стінами)
+    // Фіксація напрямку виштовхування з кутів (як у Player)
+    int activeNudgeY = 0;
+    int activeNudgeX = 0;
+
+    // Розміри коллайдера ніг
     float footBoxWidth;
     float footBoxHeight;
     float footOffsetX;
@@ -43,8 +48,11 @@ private:
     void RecalculateFootCollider();
     Vector2 GetFootCenter() const;
 
-    // Заглушки під логіку станів (FSM)
-    void UpdatePatrolState(float dt);
-    void UpdateInvestigateState(float dt);
-    void UpdateChaseState(Player& player, float dt);
+    // Універсальний осьовий рух із колізіями та обходом кутів
+    void MoveWithCollisions(Vector2 moveDir, float moveStep, const GameMap& gameMap);
+
+    // Поведінка станів (FSM)
+    void UpdatePatrolState(const GameMap& gameMap, float dt);
+    void UpdateInvestigateState(const GameMap& gameMap, float dt);
+    void UpdateChaseState(Player& player, const GameMap& gameMap, float dt);
 };

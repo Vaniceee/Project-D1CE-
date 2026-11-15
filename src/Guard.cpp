@@ -1,4 +1,5 @@
 #include "Guard.h"
+#include "Map.h"
 #include "raymath.h"
 
 Guard::Guard(Vector2 startPos, float startSpeed, float width, float height)
@@ -26,22 +27,114 @@ Vector2 Guard::GetFootCenter() const {
     return { foot.x + foot.width / 2.0f, foot.y + foot.height / 2.0f };
 }
 
-void Guard::Update(Player& player, float dt) {
-    // 1. Оновлення таймера перезарядки НПС
+void Guard::MoveWithCollisions(Vector2 moveDir, float moveStep, const GameMap& gameMap) {
+    const float nudgeTolerance = 13.0f; // Поріг у пікселях для обходу кутів (як у Player)
+
+    // =========================================================================
+    // 1. РУХ ТА КОЛІЗІЇ ПО ОСІ X (З ВИШТОВХУВАННЯМ ПО Y)
+    // =========================================================================
+    if (moveDir.x != 0.0f) {
+        position.x += moveDir.x * moveStep;
+
+        if (gameMap.CheckWallCollision(GetFootCollider())) {
+            position.x -= moveDir.x * moveStep;
+
+            if (activeNudgeY == 0) {
+                Rectangle testUp = GetFootCollider();
+                testUp.y -= nudgeTolerance;
+                testUp.x += moveDir.x * moveStep;
+
+                Rectangle testDown = GetFootCollider();
+                testDown.y += nudgeTolerance;
+                testDown.x += moveDir.x * moveStep;
+
+                bool canPassUp = !gameMap.CheckWallCollision(testUp);
+                bool canPassDown = !gameMap.CheckWallCollision(testDown);
+
+                if (canPassUp && !canPassDown) {
+                    activeNudgeY = -1;
+                }
+                else if (canPassDown && !canPassUp) {
+                    activeNudgeY = 1;
+                }
+            }
+
+            if (activeNudgeY == -1) {
+                position.y -= moveStep;
+                moveDir.y = 0.0f;
+            }
+            else if (activeNudgeY == 1) {
+                position.y += moveStep;
+                moveDir.y = 0.0f;
+            }
+        }
+        else {
+            activeNudgeY = 0;
+        }
+    }
+    else {
+        activeNudgeY = 0;
+    }
+
+    // =========================================================================
+    // 2. РУХ ТА КОЛІЗІЇ ПО ОСІ Y (З ВИШТОВХУВАННЯМ ПО X)
+    // =========================================================================
+    if (moveDir.y != 0.0f) {
+        position.y += moveDir.y * moveStep;
+
+        if (gameMap.CheckWallCollision(GetFootCollider())) {
+            position.y -= moveDir.y * moveStep;
+
+            if (activeNudgeX == 0) {
+                Rectangle testLeft = GetFootCollider();
+                testLeft.x -= nudgeTolerance;
+                testLeft.y += moveDir.y * moveStep;
+
+                Rectangle testRight = GetFootCollider();
+                testRight.x += nudgeTolerance;
+                testRight.y += moveDir.y * moveStep;
+
+                bool canPassLeft = !gameMap.CheckWallCollision(testLeft);
+                bool canPassRight = !gameMap.CheckWallCollision(testRight);
+
+                if (canPassLeft && !canPassRight) {
+                    activeNudgeX = -1;
+                }
+                else if (canPassRight && !canPassLeft) {
+                    activeNudgeX = 1;
+                }
+            }
+
+            if (activeNudgeX == -1) {
+                position.x -= moveStep;
+                moveDir.x = 0.0f;
+            }
+            else if (activeNudgeX == 1) {
+                position.x += moveStep;
+                moveDir.x = 0.0f;
+            }
+        }
+        else {
+            activeNudgeX = 0;
+        }
+    }
+    else {
+        activeNudgeX = 0;
+    }
+}
+
+void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
     if (attackCooldownTimer > 0.0f) {
         attackCooldownTimer -= dt;
         if (attackCooldownTimer < 0.0f) attackCooldownTimer = 0.0f;
     }
 
-    // 2. Розрахунок відстані МІЖ ЦЕНТРАМИ
     Vector2 guardFootCenter = GetFootCenter();
     Rectangle playerFoot = player.GetFootCollider();
     Vector2 playerFootCenter = { playerFoot.x + playerFoot.width / 2.0f, playerFoot.y + playerFoot.height / 2.0f };
 
     float distToPlayer = Vector2Distance(guardFootCenter, playerFootCenter);
 
-    // Проста перевірка виявлення (Заглушка FSM):
-    
     if (distToPlayer <= detectionRadius) {
         currentState = GuardState::CHASE;
     }
@@ -49,41 +142,38 @@ void Guard::Update(Player& player, float dt) {
         currentState = GuardState::PATROL;
     }
 
-    // Виконання поточної поведінки FSM
     switch (currentState) {
     case GuardState::PATROL:
-        UpdatePatrolState(dt);
+        UpdatePatrolState(gameMap, dt);
         break;
     case GuardState::INVESTIGATE:
-        UpdateInvestigateState(dt);
+        UpdateInvestigateState(gameMap, dt);
         break;
     case GuardState::CHASE:
-        UpdateChaseState(player, dt);
+        UpdateChaseState(player, gameMap, dt);
         break;
     }
 
-    // Нанесення шкоди при базі (без окремого стану атаки)
     if (distToPlayer <= attackRadius && attackCooldownTimer <= 0.0f) {
         if (!player.IsInvincible()) {
             player.TakeDamage(1);
-            attackCooldownTimer = attackCooldownDuration; 
+            attackCooldownTimer = attackCooldownDuration;
         }
     }
 
-    // Оновлення хитбокса
     collider.x = position.x + footOffsetX;
     collider.y = position.y + footOffsetY;
 }
 
-void Guard::UpdatePatrolState(float dt) {
-    // Тимчасова заглушка: НПС стоїть на місці у патрулі
+void Guard::UpdatePatrolState(const GameMap& gameMap, float dt) {
+    // Заглушка: коли додамо патруль, рухатимемось через MoveWithCollisions(...)
 }
 
-void Guard::UpdateInvestigateState(float dt) {
-    // Тимчасова заглушка для пошуку шуму
+void Guard::UpdateInvestigateState(const GameMap& gameMap, float dt) {
+    // Заглушка: коли додамо розслідування шуму, рухатимемось через MoveWithCollisions(...)
 }
 
-void Guard::UpdateChaseState(Player& player, float dt) {
+void Guard::UpdateChaseState(Player& player, const GameMap& gameMap, float dt) {
     Vector2 guardFootCenter = GetFootCenter();
     Rectangle playerFoot = player.GetFootCollider();
     Vector2 playerFootCenter = { playerFoot.x + playerFoot.width / 2.0f, playerFoot.y + playerFoot.height / 2.0f };
@@ -92,16 +182,14 @@ void Guard::UpdateChaseState(Player& player, float dt) {
     if (Vector2Length(dir) > 0.0f) {
         dir = Vector2Normalize(dir);
 
-        // Якщо НПС на кулдауні — швидкість падає до 25% (slowdownFactor)
         float currentMoveSpeed = (attackCooldownTimer > 0.0f) ? (speed * slowdownFactor) : speed;
+        float moveStep = currentMoveSpeed * dt;
 
-        position.x += dir.x * currentMoveSpeed * dt;
-        position.y += dir.y * currentMoveSpeed * dt;
+        MoveWithCollisions(dir, moveStep, gameMap);
     }
 }
 
 void Guard::Draw() {
-    // 1. Червоний прямокутник-заглушка замість текстури спрайта
     Color guardColor = (attackCooldownTimer > 0.0f) ? MAROON : RED;
     DrawRectangleRec({ position.x, position.y, collider.width * scale, collider.height * scale }, guardColor);
 

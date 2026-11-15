@@ -148,7 +148,7 @@ void GameplayState::Update() {
         // ========================================
 
         if (guard) {
-            guard->Update(*player, dt);
+            guard->Update(*player, gameMap, dt);
         }
 
         if (player->GetLives() <= 0 && !isGameOverProcessed) {
