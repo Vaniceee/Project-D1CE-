@@ -60,6 +60,14 @@ private:
     float pathUpdateTimer = 0.0f;
     float teleportCooldown = 0.0f;
     bool pursuingTeleport = false;
+    bool returningViaTeleport = false;
+    Vector2 returnTriggerPos = { 0.0f, 0.0f };
+
+    // Çàòğèìêà òåëåïîğòàö³¿ ÍÏÑ
+    bool isTeleporting = false;
+    float teleportTimer = 0.0f;
+    float teleportDuration = 1.2f;
+    Vector2 pendingTeleportPos = { 0.0f, 0.0f };
 
     // --- ØÀÁËÎÍ ÄËß ÌÀÉÁÓÒÍÜÎÃÎ ÏÀÒĞÓËß ÒÀ ÎÇÈĞÀÍÍß ---
     std::vector<Vector2> patrolWaypoints;

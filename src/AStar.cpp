@@ -10,7 +10,13 @@ void AStar::BuildGrid(const GameMap& gameMap) {
     tileWidth = gameMap.GetTileWidth();
     tileHeight = gameMap.GetTileHeight();
 
-    walkable.assign(width * height, true);
+    const int totalNodes = width * height;
+    walkable.assign(totalNodes, true);
+    zoneIds.assign(totalNodes, -1);
+
+    gScore.resize(totalNodes);
+    cameFrom.resize(totalNodes);
+    closed.resize(totalNodes);
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
@@ -24,6 +30,39 @@ void AStar::BuildGrid(const GameMap& gameMap) {
                 walkable[y * width + x] = false;
             }
         }
+    }
+
+    // Попередня розмітка зв'язних зон (кімнат/коридорів) через BFS
+    int currentZone = 0;
+    std::queue<int> q;
+    const int dirs[4][2] = { {1, 0}, {-1, 0}, {0, 1}, {0, -1} };
+
+    for (int i = 0; i < totalNodes; ++i) {
+        if (!walkable[i] || zoneIds[i] != -1) continue;
+
+        zoneIds[i] = currentZone;
+        q.push(i);
+
+        while (!q.empty()) {
+            int curr = q.front();
+            q.pop();
+
+            int cx = curr % width;
+            int cy = curr / width;
+
+            for (const auto& d : dirs) {
+                int nx = cx + d[0];
+                int ny = cy + d[1];
+                if (!IsWalkable(nx, ny)) continue;
+
+                int nIdx = ny * width + nx;
+                if (zoneIds[nIdx] == -1) {
+                    zoneIds[nIdx] = currentZone;
+                    q.push(nIdx);
+                }
+            }
+        }
+        currentZone++;
     }
 }
 
@@ -63,15 +102,23 @@ std::vector<Vector2> AStar::FindPath(Vector2 startWorld, Vector2 goalWorld) cons
     FindNearestWalkable(goalX, goalY);
 
     if (!IsWalkable(startX, startY) || !IsWalkable(goalX, goalY)) return path;
-    if (startX == goalX && startY == goalY) {
+
+    int startIdx = startY * width + startX;
+    int goalIdx = goalY * width + goalX;
+
+    // Миттєвий вихід O(1), якщо старт і фініш у різних ізольованих кімнатах
+    if (zoneIds[startIdx] != zoneIds[goalIdx]) {
+        return path;
+    }
+
+    if (startIdx == goalIdx) {
         path.push_back(goalWorld);
         return path;
     }
 
-    const int totalNodes = width * height;
-    std::vector<float> gScore(totalNodes, 1e9f);
-    std::vector<int> cameFrom(totalNodes, -1);
-    std::vector<bool> closed(totalNodes, false);
+    std::fill(gScore.begin(), gScore.end(), 1e9f);
+    std::fill(cameFrom.begin(), cameFrom.end(), -1);
+    std::fill(closed.begin(), closed.end(), 0);
 
     struct Node {
         int idx;
@@ -87,13 +134,9 @@ std::vector<Vector2> AStar::FindPath(Vector2 startWorld, Vector2 goalWorld) cons
         return (dx + dy) + (1.4142f - 2.0f) * fminf(dx, dy);
         };
 
-    int startIdx = startY * width + startX;
-    int goalIdx = goalY * width + goalX;
-
     gScore[startIdx] = 0.0f;
     openSet.push({ startIdx, heuristic(startX, startY, goalX, goalY) });
 
-    // 8 напрямків: 4 прямих + 4 діагональних
     const int dirs[8][2] = {
         {1, 0}, {-1, 0}, {0, 1}, {0, -1},
         {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
@@ -115,7 +158,6 @@ std::vector<Vector2> AStar::FindPath(Vector2 startWorld, Vector2 goalWorld) cons
                 curr = cameFrom[curr];
             }
             std::reverse(path.begin(), path.end());
-            // Останню точку замінюємо на точну позицію цілі, а не центр її тайлу
             if (!path.empty()) {
                 path.back() = goalWorld;
             }
@@ -123,7 +165,7 @@ std::vector<Vector2> AStar::FindPath(Vector2 startWorld, Vector2 goalWorld) cons
         }
 
         if (closed[current]) continue;
-        closed[current] = true;
+        closed[current] = 1;
 
         int cx = current % width;
         int cy = current / width;
@@ -136,7 +178,6 @@ std::vector<Vector2> AStar::FindPath(Vector2 startWorld, Vector2 goalWorld) cons
 
             if (!IsWalkable(nx, ny)) continue;
 
-            // Захист від зрізання кутів: для діагоналі обидва сусідні прямі тайли мають бути вільні
             bool isDiagonal = (dx != 0 && dy != 0);
             if (isDiagonal) {
                 if (!IsWalkable(cx + dx, cy) || !IsWalkable(cx, cy + dy)) {

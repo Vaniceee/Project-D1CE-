@@ -43,13 +43,15 @@ float Guard::GetActiveFovAngle() const {
 void Guard::OnPlayerTeleported(Vector2 enteredTriggerCenter) {
     if (currentState == GuardState::CHASE || currentState == GuardState::INVESTIGATE) {
         currentState = GuardState::INVESTIGATE;
-        chaseMemoryTimer = 0.0f; // ќдразу скидаЇмо пам'€ть, щоб Ќѕ— б≥г до дверей
+        pursuingTeleport = true;
+        returningViaTeleport = false;
+        chaseMemoryTimer = 0.0f;
         lastKnownPlayerPos = enteredTriggerCenter;
         isScanning = false;
         scanTimer = 0.0f;
-        currentPath = pathfinder.FindPath(GetFootCenter(), lastKnownPlayerPos);
-        pathUpdateTimer = 0.25f;
-        GAME_INFO("GUARD", "Player teleported! Guard investigating trigger at (%.1f, %.1f)",
+        currentPath.clear();
+        pathUpdateTimer = 0.0f;
+        GAME_INFO("GUARD", "Player teleported! Guard pursuing into trigger at (%.1f, %.1f)",
             enteredTriggerCenter.x, enteredTriggerCenter.y);
     }
 }
@@ -72,6 +74,42 @@ bool Guard::HasClearLineOfSight(Vector2 start, Vector2 end, const GameMap& gameM
     return true;
 }
 
+bool Guard::CanMoveDirectlyTo(Vector2 start, Vector2 end, const GameMap& gameMap) const {
+    Vector2 diff = Vector2Subtract(end, start);
+    float dist = Vector2Length(diff);
+    if (dist <= 4.0f) return true;
+
+    Vector2 dir = Vector2Scale(diff, 1.0f / dist);
+    const float stepSize = 10.0f;
+
+    for (float d = stepSize; d <= dist; d += stepSize) {
+        Vector2 p = Vector2Add(start, Vector2Scale(dir, d));
+        Rectangle footCheck = {
+            p.x - footBoxWidth * 0.5f,
+            p.y - footBoxHeight * 0.5f,
+            footBoxWidth,
+            footBoxHeight
+        };
+        if (gameMap.CheckWallCollision(footCheck)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void Guard::RequestPathTo(Vector2 target, const GameMap& gameMap) {
+    Vector2 guardCenter = GetFootCenter();
+    currentPath = pathfinder.FindPath(guardCenter, target);
+
+    if (currentPath.size() > 1) {
+        Vector2 toFirst = Vector2Subtract(currentPath[0], guardCenter);
+        Vector2 toSecond = Vector2Subtract(currentPath[1], currentPath[0]);
+        if (Vector2Length(toFirst) < 18.0f || Vector2DotProduct(toFirst, toSecond) < 0.0f) {
+            currentPath.erase(currentPath.begin());
+        }
+    }
+}
+
 bool Guard::CanDetectPlayer(const Player& player, const GameMap& gameMap) const {
     Vector2 guardCenter = GetFootCenter();
     Rectangle playerFoot = player.GetFootCollider();
@@ -81,17 +119,16 @@ bool Guard::CanDetectPlayer(const Player& player, const GameMap& gameMap) const 
     float maxRange = fmaxf(viewDistance, hearingSprintRadius);
     if (dist > maxRange) return false;
 
-    // —т≥ни блокують ≥ пр€мий з≥р, ≥ приглушують кроки за перегородкою
     if (!HasClearLineOfSight(guardCenter, playerCenter, gameMap)) {
         return false;
     }
 
-    // 1. ћ≥кро-зона дотику з≥ спини (спрацьовуЇ завжди)
+    // 1. ћ≥кро-зона дотику з≥ спини
     if (dist <= proximityRadius) {
         return true;
     }
 
-    // 2. «она слуху (спрацьовуЇ, €кщо гравець рухаЇтьс€ або спринтуЇ поруч)
+    // 2. «она слуху крок≥в
     if (player.IsSprinting() && dist <= hearingSprintRadius) {
         return true;
     }
@@ -207,6 +244,35 @@ void Guard::FollowPath(float moveSpeed, const GameMap& gameMap, float dt) {
 }
 
 void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
+    // 0. ќбробка затримки п≥д час переходу Ќѕ— через двер≥/телепорт
+    if (isTeleporting) {
+        teleportTimer -= dt;
+        if (teleportTimer <= 0.0f) {
+            isTeleporting = false;
+            SetPosition(pendingTeleportPos);
+            teleportCooldown = 1.5f;
+            chaseMemoryTimer = 0.0f;
+            pursuingTeleport = false;
+            currentPath.clear();
+
+            if (returningViaTeleport) {
+                returningViaTeleport = false;
+                currentState = GuardState::PATROL;
+                isScanning = false;
+            }
+            else {
+                currentState = GuardState::INVESTIGATE;
+                isScanning = true;
+                scanTimer = 0.0f;
+                baseLookAngle = facingAngle;
+            }
+            GAME_INFO("GUARD", "Guard finished teleport to (%.1f, %.1f)", pendingTeleportPos.x, pendingTeleportPos.y);
+        }
+        collider.x = position.x + footOffsetX;
+        collider.y = position.y + footOffsetY;
+        return;
+    }
+
     if (attackCooldownTimer > 0.0f) {
         attackCooldownTimer -= dt;
         if (attackCooldownTimer < 0.0f) attackCooldownTimer = 0.0f;
@@ -226,8 +292,16 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
     float distToPlayer = Vector2Distance(guardFootCenter, playerFootCenter);
     bool detectedNow = CanDetectPlayer(player, gameMap);
 
+    // якщо гравець щойно зайшов у телепорт ≥ ще догораЇ FADING_OUT б≥л€ тих самих дверей Ч
+    // не скидаЇмо ц≥ль пересл≥дуванн€ телепорту
+    if (pursuingTeleport && Vector2Distance(playerFootCenter, lastKnownPlayerPos) < 48.0f) {
+        detectedNow = false;
+    }
+
     // 1. Ћог≥ка переход≥в FSM з урахуванн€м ≥нерц≥њ погон≥
     if (detectedNow) {
+        pursuingTeleport = false;
+        returningViaTeleport = false;
         if (currentState != GuardState::CHASE) {
             currentState = GuardState::CHASE;
             currentPath.clear();
@@ -240,7 +314,6 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
     }
     else if (currentState == GuardState::CHASE) {
         if (chaseMemoryTimer > 0.0f) {
-            // ѕрот€гом 1.5 сек п≥сл€ втрати з пол€ зору Ќѕ— ще в≥дчуваЇ напр€мок руху гравц€
             chaseMemoryTimer -= dt;
             lastKnownPlayerPos = playerFootCenter;
         }
@@ -248,7 +321,7 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
             currentState = GuardState::INVESTIGATE;
             isScanning = false;
             scanTimer = 0.0f;
-            currentPath = pathfinder.FindPath(guardFootCenter, lastKnownPlayerPos);
+            RequestPathTo(lastKnownPlayerPos, gameMap);
             GAME_INFO("GUARD", "Lost sight! State -> INVESTIGATE");
         }
     }
@@ -266,18 +339,15 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
         break;
     }
 
-    // 3. ѕерев≥рка телепорту дл€ самого Ќѕ—
+    // 3. ѕерев≥рка телепорту дл€ самого Ќѕ— (запуск ≥з затримкою)
     Vector2 newGuardPos;
     if (teleportCooldown <= 0.0f && gameMap.TryGetTeleportDestination(GetFootCollider(), position, newGuardPos)) {
-        SetPosition(newGuardPos);
-        teleportCooldown = 1.5f;
-        chaseMemoryTimer = 0.0f;
+        isTeleporting = true;
+        teleportTimer = teleportDuration;
+        pendingTeleportPos = newGuardPos;
         currentPath.clear();
-        currentState = GuardState::INVESTIGATE;
-        isScanning = true;
-        scanTimer = 0.0f;
-        baseLookAngle = facingAngle;
-        GAME_INFO("GUARD", "Guard used teleport to (%.1f, %.1f)", newGuardPos.x, newGuardPos.y);
+        GAME_INFO("GUARD", "Guard entering teleport (delay: %.2fs)...", teleportDuration);
+        return;
     }
 
     // 4. јтака
@@ -293,13 +363,38 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
 }
 
 void Guard::UpdatePatrolState(const GameMap& gameMap, float dt) {
+    Vector2 guardCenter = GetFootCenter();
+
+    // 1. якщо Ќѕ— застр€г в ≥нш≥й к≥мнат≥ ≥ йде до вих≥дного телепорту
+    if (returningViaTeleport) {
+        float distToDoor = Vector2Distance(guardCenter, returnTriggerPos);
+        if (distToDoor > 3.0f && CanMoveDirectlyTo(guardCenter, returnTriggerPos, gameMap)) {
+            currentPath.clear();
+            Vector2 dir = Vector2Normalize(Vector2Subtract(returnTriggerPos, guardCenter));
+            facingAngle = atan2f(dir.y, dir.x);
+            MoveWithCollisions(dir, speed * 0.75f * dt, gameMap);
+            return;
+        }
+
+        if (!currentPath.empty()) {
+            FollowPath(speed * 0.75f, gameMap, dt);
+        }
+        else if (distToDoor > 3.0f) {
+            Vector2 dir = Vector2Normalize(Vector2Subtract(returnTriggerPos, guardCenter));
+            facingAngle = atan2f(dir.y, dir.x);
+            MoveWithCollisions(dir, speed * 0.75f * dt, gameMap);
+        }
+        return;
+    }
+
+    // 2. «вичайне поверненн€ на точку спавну
     Vector2 targetPoint = spawnFootPos;
 
-    if (Vector2Distance(GetFootCenter(), targetPoint) > 12.0f) {
+    if (Vector2Distance(guardCenter, targetPoint) > 12.0f) {
         isScanning = false;
-        if (CanMoveDirectlyTo(GetFootCenter(), targetPoint, gameMap)) {
+        if (CanMoveDirectlyTo(guardCenter, targetPoint, gameMap)) {
             currentPath.clear();
-            Vector2 dir = Vector2Normalize(Vector2Subtract(targetPoint, GetFootCenter()));
+            Vector2 dir = Vector2Normalize(Vector2Subtract(targetPoint, guardCenter));
             facingAngle = atan2f(dir.y, dir.x);
             MoveWithCollisions(dir, speed * 0.75f * dt, gameMap);
             return;
@@ -307,6 +402,36 @@ void Guard::UpdatePatrolState(const GameMap& gameMap, float dt) {
 
         if (currentPath.empty() && pathUpdateTimer <= 0.0f) {
             RequestPathTo(targetPoint, gameMap);
+
+            // якщо A* повернув порожн≥й шл€х Ч спавн в ≥нш≥й к≥мнат≥ за телепортом
+            if (currentPath.empty()) {
+                float bestDist = 1e9f;
+                bool foundExitTrigger = false;
+
+                for (const Vector2& trigCenter : gameMap.GetAllTriggerCenters()) {
+                    auto pathToTrig = pathfinder.FindPath(guardCenter, trigCenter);
+                    if (!pathToTrig.empty() || CanMoveDirectlyTo(guardCenter, trigCenter, gameMap)) {
+                        float d = Vector2Distance(guardCenter, trigCenter);
+                        if (d < bestDist) {
+                            bestDist = d;
+                            returnTriggerPos = trigCenter;
+                            currentPath = std::move(pathToTrig);
+                            foundExitTrigger = true;
+                        }
+                    }
+                }
+
+                if (foundExitTrigger) {
+                    returningViaTeleport = true;
+                    GAME_INFO("GUARD", "Spawn unreachable directly. Returning via trigger at (%.1f, %.1f)",
+                        returnTriggerPos.x, returnTriggerPos.y);
+                }
+                else {
+                    pathUpdateTimer = 5.0f;
+                }
+                return;
+            }
+
             pathUpdateTimer = 0.5f;
         }
         FollowPath(speed * 0.75f, gameMap, dt);
@@ -323,8 +448,10 @@ void Guard::UpdatePatrolState(const GameMap& gameMap, float dt) {
 
 void Guard::UpdateInvestigateState(const GameMap& gameMap, float dt) {
     float currentMoveSpeed = (attackCooldownTimer > 0.0f) ? (speed * slowdownFactor) : (speed * 0.9f);
+    float stopThreshold = pursuingTeleport ? 3.0f : 12.0f;
+    float distToTarget = Vector2Distance(GetFootCenter(), lastKnownPlayerPos);
 
-    if (Vector2Distance(GetFootCenter(), lastKnownPlayerPos) > 12.0f &&
+    if (distToTarget > stopThreshold &&
         CanMoveDirectlyTo(GetFootCenter(), lastKnownPlayerPos, gameMap)) {
         currentPath.clear();
         Vector2 dir = Vector2Normalize(Vector2Subtract(lastKnownPlayerPos, GetFootCenter()));
@@ -333,10 +460,21 @@ void Guard::UpdateInvestigateState(const GameMap& gameMap, float dt) {
         return;
     }
 
+    if (distToTarget > stopThreshold && currentPath.empty() && pathUpdateTimer <= 0.0f) {
+        RequestPathTo(lastKnownPlayerPos, gameMap);
+        pathUpdateTimer = 0.25f;
+    }
+
     if (!currentPath.empty()) {
         FollowPath(currentMoveSpeed, gameMap, dt);
     }
+    else if (pursuingTeleport && distToTarget > stopThreshold) {
+        Vector2 dir = Vector2Normalize(Vector2Subtract(lastKnownPlayerPos, GetFootCenter()));
+        facingAngle = atan2f(dir.y, dir.x);
+        MoveWithCollisions(dir, currentMoveSpeed * dt, gameMap);
+    }
     else {
+        pursuingTeleport = false;
         if (!isScanning) {
             isScanning = true;
             scanTimer = 0.0f;
@@ -358,7 +496,6 @@ void Guard::UpdateChaseState(Player& player, const GameMap& gameMap, float dt) {
     Vector2 guardCenter = GetFootCenter();
     float currentMoveSpeed = (attackCooldownTimer > 0.0f) ? (speed * slowdownFactor) : speed;
 
-    // 1. якщо прох≥д до гравц€ пр€мий Ч б≥жимо напр€му без прив'€зки до с≥тки тайл≥в
     if (CanMoveDirectlyTo(guardCenter, lastKnownPlayerPos, gameMap)) {
         currentPath.clear();
         Vector2 diff = Vector2Subtract(lastKnownPlayerPos, guardCenter);
@@ -370,7 +507,6 @@ void Guard::UpdateChaseState(Player& player, const GameMap& gameMap, float dt) {
         return;
     }
 
-    // 2. якщо м≥ж нами кут чи ст≥на Ч ведемо по д≥агональному A*
     if (pathUpdateTimer <= 0.0f || currentPath.empty()) {
         RequestPathTo(lastKnownPlayerPos, gameMap);
         pathUpdateTimer = 0.25f;
@@ -384,6 +520,10 @@ void Guard::Draw() {
     if (attackCooldownTimer > 0.0f) guardColor = MAROON;
     else if (currentState == GuardState::INVESTIGATE) guardColor = ORANGE;
     else if (currentState == GuardState::PATROL) guardColor = BLUE;
+
+    if (isTeleporting) {
+        guardColor = ColorAlpha(guardColor, 0.35f);
+    }
 
     DrawRectangleRec({ position.x, position.y, collider.width * scale, collider.height * scale }, guardColor);
 
@@ -408,44 +548,5 @@ void Guard::Draw() {
     for (size_t i = 0; i < currentPath.size(); ++i) {
         DrawCircleV(currentPath[i], 3.0f, SKYBLUE);
         if (i > 0) DrawLineV(currentPath[i - 1], currentPath[i], ColorAlpha(SKYBLUE, 0.5f));
-    }
-}
-
-// ѕерев≥р€Ї широкий коридор (з урахуванн€м ширини н≥г Ќѕ—), щоб не зачепити кут ст≥ни при пр€мому б≥гу
-bool Guard::CanMoveDirectlyTo(Vector2 start, Vector2 end, const GameMap& gameMap) const {
-    Vector2 diff = Vector2Subtract(end, start);
-    float dist = Vector2Length(diff);
-    if (dist <= 4.0f) return true;
-
-    Vector2 dir = Vector2Scale(diff, 1.0f / dist);
-    const float stepSize = 10.0f;
-
-    for (float d = stepSize; d <= dist; d += stepSize) {
-        Vector2 p = Vector2Add(start, Vector2Scale(dir, d));
-        Rectangle footCheck = {
-            p.x - footBoxWidth * 0.5f,
-            p.y - footBoxHeight * 0.5f,
-            footBoxWidth,
-            footBoxHeight
-        };
-        if (gameMap.CheckWallCollision(footCheck)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-// ЅудуЇ шл€х A* ≥ в≥дкидаЇ першу точку, €кщо вона позаду або майже п≥д ногами (прибираЇ с≥панн€ м≥ж 2 тайлами)
-void Guard::RequestPathTo(Vector2 target, const GameMap& gameMap) {
-    Vector2 guardCenter = GetFootCenter();
-    currentPath = pathfinder.FindPath(guardCenter, target);
-
-    if (currentPath.size() > 1) {
-        Vector2 toFirst = Vector2Subtract(currentPath[0], guardCenter);
-        Vector2 toSecond = Vector2Subtract(currentPath[1], currentPath[0]);
-        // якщо перша точка вже пройдена або веде в протилежний б≥к в≥д другоњ Ч пропускаЇмо њњ
-        if (Vector2Length(toFirst) < 18.0f || Vector2DotProduct(toFirst, toSecond) < 0.0f) {
-            currentPath.erase(currentPath.begin());
-        }
     }
 }

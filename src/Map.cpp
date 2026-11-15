@@ -270,3 +270,15 @@ bool GameMap::TryGetActiveTriggerCenter(Rectangle footHitbox, Vector2& outTrigge
     }
     return false;
 }
+//------------ПОШУК ТРИГЕРУ ДВЕРЕЙ В КІМНАТІ ДЛЯ НПС------------------
+std::vector<Vector2> GameMap::GetAllTriggerCenters() const {
+    std::vector<Vector2> centers;
+    centers.reserve(data.triggers.size());
+    for (const auto& trig : data.triggers) {
+        centers.push_back({
+            trig.x + trig.width * 0.5f,
+            trig.y + trig.height * 0.5f
+            });
+    }
+    return centers;
+}

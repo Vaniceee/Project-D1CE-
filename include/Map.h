@@ -60,7 +60,7 @@ public:
     void UpdateTriggers(Rectangle playerHitbox);
     bool TryGetTeleportDestination(Rectangle playerFootHitbox, Vector2 playerPos, Vector2& outNewPlayerPos) const;
     bool TryGetActiveTriggerCenter(Rectangle footHitbox, Vector2& outTriggerCenter) const;
-
+    std::vector<Vector2> GetAllTriggerCenters() const;
     // Гетери
     int GetWidth() const { return data.mapWidth; }
     int GetHeight() const { return data.mapHeight; }
