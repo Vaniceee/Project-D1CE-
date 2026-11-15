@@ -16,4 +16,5 @@ public:
     static PlayerDirection GetLastDirection();
     static bool IsInteractPressed();
     static bool IsSprintPressed();
+    static bool IsDebugTogglePressed();
 };

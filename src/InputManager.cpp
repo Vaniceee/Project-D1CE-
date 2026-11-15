@@ -39,3 +39,7 @@ bool InputManager::IsInteractPressed() {
 bool InputManager::IsSprintPressed() {
     return IsKeyDown(KEY_LEFT_SHIFT);
 }
+
+bool InputManager::IsDebugTogglePressed() {
+    return IsKeyPressed(KEY_F1);
+}

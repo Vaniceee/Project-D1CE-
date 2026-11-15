@@ -3,6 +3,7 @@
 #include "Map.h"
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include "AssetManager.h"
 #include "Logger.h"
 #include <fstream>
@@ -26,5 +27,11 @@ private:
     static std::vector<int> ParseCSV(const std::string& content, const std::string& layerName);
     static void ParseSpawnLayer(const std::string& content, const std::string& layerName, MapData& outData);
     static void ParseVisualObjectLayer(const std::string& content, const std::string& layerName, int layerOrder, MapData& outData);
-    static void ParseRectLayer(const std::string& content, const std::string& layerName, std::vector<Rectangle>& rects, std::vector<std::string>* names);
+    static void ParseRectLayer(
+        const std::string& content,
+        const std::string& layerName,
+        std::vector<Rectangle>& rects,
+        std::vector<std::string>* names,
+        std::unordered_map<std::string, Rectangle>* targets = nullptr
+    );
 };

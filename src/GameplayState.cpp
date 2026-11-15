@@ -1,4 +1,5 @@
 #include "GameplayState.h"
+#include "InputManager.h"
 
 void GameplayState::Init() {
     targetTexture = LoadRenderTexture(virtualWidth, virtualHeight);
@@ -56,6 +57,12 @@ void GameplayState::Init() {
     // 3. Ініціалізація камери
     gameCamera.Init(startPos, virtualWidth, virtualHeight, 1.8f);
 
+    // Скидання станів телепортації
+    tpPhase = TeleportPhase::NONE;
+    tpFadeAlpha = 0.0f;
+    waitForKeysRelease = false;
+    wasInTrigger = false;
+
     //======================MUSIC======================
     AssetManager::Instance().LoadMusic("ambient", Config::PATH_AUDIO_AMBIENT);
     bgMusic = AssetManager::Instance().GetMusic("ambient");
@@ -85,17 +92,53 @@ void GameplayState::Cleanup() {
 }
 
 void GameplayState::Update() {
+    if (InputManager::IsDebugTogglePressed()) {
+        showDebugOverlay = !showDebugOverlay;
+    }
+
     if (player) {
         UpdateMusicStream(bgMusic);
-        player->Update(gameMap);
         float dt = GetFrameTime();
+
+        Vector2 currentInputDir = InputManager::GetMovementDirection();
+        bool anyMoveKeyPressed = (currentInputDir.x != 0.0f || currentInputDir.y != 0.0f);
+
+        // Якщо чекаємо повного відпускання клавіш після телепорту (захист і від прямого, і від діагонального руху)
+        if (waitForKeysRelease && !anyMoveKeyPressed) {
+            waitForKeysRelease = false;
+        }
+
+        // Обробка фаз переходу між локаціями
+        if (tpPhase == TeleportPhase::FADING_OUT) {
+            tpFadeAlpha += tpFadeSpeed * dt;
+            if (tpFadeAlpha >= 1.0f) {
+                tpFadeAlpha = 1.0f;
+                // Переносимо гравця в нову локацію у момент повної темряви
+                player->SetPosition(pendingTeleportPos);
+                tpPhase = TeleportPhase::FADING_IN;
+            }
+        }
+        else if (tpPhase == TeleportPhase::FADING_IN) {
+            tpFadeAlpha -= tpFadeSpeed * dt;
+            if (tpFadeAlpha <= 0.0f) {
+                tpFadeAlpha = 0.0f;
+                tpPhase = TeleportPhase::NONE;
+                waitForKeysRelease = true; // Після освітлення чекаємо відпускання затиснутих клавіш
+            }
+        }
+
+        // Гравець рухається ТІЛЬКИ коли немає переходу і всі клавіші після минулого ТП були відпущені
+        bool isMovementBlocked = (tpPhase != TeleportPhase::NONE) || waitForKeysRelease;
+        if (!isMovementBlocked) {
+            player->Update(gameMap);
+        }
 
         // === ЛОГІКА АНІМАЦІЇ UI КАРТИ ЖИТТІВ ===
         int currentLives = player->GetLives();
         if (currentLives < lastPlayerLives) {
             cardFlickerTimer = cardFlickerDuration;
             lastPlayerLives = currentLives;
-            gameCamera.AddTrauma(0.55f); // Додатковий струс камери при втраті життя
+            gameCamera.AddTrauma(0.55f);
         }
 
         if (cardFlickerTimer > 0.0f) {
@@ -108,7 +151,6 @@ void GameplayState::Update() {
             guard->Update(*player, dt);
         }
 
-        // Перевірка на кінець життів
         if (player->GetLives() <= 0 && !isGameOverProcessed) {
             TraceLog(LOG_WARNING, "GAME OVER! Player died.");
             isGameOverProcessed = true;
@@ -116,16 +158,32 @@ void GameplayState::Update() {
 
         Rectangle footCollider = player->GetFootCollider();
 
-        // 1. Оновлення тригерів дверей / взаємодій
-        gameMap.UpdateDoorTriggers(footCollider);
+        // 1. Оновлення тригерів та запуск переходу при вході в двері
+        gameMap.UpdateTriggers(footCollider);
+        bool isInTriggerNow = !gameMap.GetCurrentTriggerMessage().empty();
 
-        // 2. Оновлення камери
+        if (tpPhase == TeleportPhase::NONE) {
+            if (isInTriggerNow && !wasInTrigger) {
+                Vector2 newPlayerPos;
+                if (gameMap.TryGetTeleportDestination(footCollider, player->GetPosition(), newPlayerPos)) {
+                    pendingTeleportPos = newPlayerPos;
+                    tpPhase = TeleportPhase::FADING_OUT;
+                    wasInTrigger = true;
+                }
+            }
+            else if (!isInTriggerNow) {
+                wasInTrigger = false;
+            }
+        }
+
+        // 2. Оновлення камери (під час FADING_OUT/IN камера плавно перелітає до нової позиції)
         Vector2 desiredTarget = {
             footCollider.x + footCollider.width / 2.0f,
             footCollider.y + footCollider.height / 2.0f
         };
         float staminaRatio = player->GetCurrentStamina() / player->GetMaxStamina();
-        gameCamera.Update(desiredTarget, player->IsMoving(), player->IsSprinting(), player->IsExhausted(), staminaRatio, dt);
+        bool effectiveMoving = !isMovementBlocked && player->IsMoving();
+        gameCamera.Update(desiredTarget, effectiveMoving, player->IsSprinting(), player->IsExhausted(), staminaRatio, dt);
 
         // 3. Мерехтіння та передача позиції гравця в шейдер
         flickerTimer += dt;
@@ -135,7 +193,6 @@ void GameplayState::Update() {
 
         Vector2 playerScreenPos = gameCamera.GetScreenPosition(desiredTarget);
 
-        // Flip Y під OpenGL координати
         float pos[2] = {
             playerScreenPos.x,
             (float)virtualHeight - playerScreenPos.y
@@ -152,6 +209,9 @@ void GameplayState::Draw() {
 
     BeginMode2D(gameCamera.GetCamera());
     renderSystem.RenderWorld(gameMap, player.get(), guard.get());
+    if (showDebugOverlay) {
+        gameMap.DrawDebug();
+    }
     EndMode2D();
 
     EndTextureMode();
@@ -203,7 +263,7 @@ void GameplayState::Draw() {
             DrawTextureEx(staminaTex, position, rotation, scaleTex, WHITE);
         }
 
-        // --- ВІДОБРАЖЕННЯ КАРТИ ЖИТТІВ (4 кадри 32x32, спрайтшит 128x32) ---
+        // --- ВІДОБРАЖЕННЯ КАРТИ ЖИТТІВ ---
         Texture2D cardTex = AssetManager::Instance().GetTexture("card_lives");
         if (cardTex.id > 0) {
             const float frameWidth = 32.0f;
@@ -259,5 +319,10 @@ void GameplayState::Draw() {
         DrawFPS(20, 20);
         DrawText(TextFormat("Player Pos: X: %.1f | Y: %.1f", foot.x, foot.y), 20, 45, 18, GREEN);
         DrawText(TextFormat("Tile Coords: X: %d | Y: %d", (int)(foot.x / 32.0f), (int)(foot.y / 32.0f)), 20, 65, 18, YELLOW);
+    }
+
+    // --- ЗАТЕМНЕННЯ ПРИ ПЕРЕХОДІ ЛОКАЦІЇ ---
+    if (tpFadeAlpha > 0.0f) {
+        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, tpFadeAlpha));
     }
 }

@@ -1,5 +1,6 @@
 #include "Map.h"
 #include "MapParser.h"
+#include "Logger.h"
 
 bool GameMap::Load(const std::string& mapPath, const std::string& defaultTilesetKey) {
     Unload();
@@ -7,8 +8,8 @@ bool GameMap::Load(const std::string& mapPath, const std::string& defaultTileset
 }
 
 void GameMap::Unload() {
-    data = MapData{}; // Скидає всі вектори та параметри до дефолтних значень
-    currentDoorMessage = "";
+    data = MapData{};
+    currentTriggerMessage = "";
 }
 
 void GameMap::DrawBelowPlayer() const {
@@ -171,6 +172,39 @@ void GameMap::DrawVisualObject(const MapVisualObject& obj) const {
     DrawTexturePro(tex, srcRec, destRec, origin, rotation, WHITE);
 }
 
+void GameMap::DrawDebug() const {
+    // 1. Колізії — напівпрозорий червоний
+    for (const auto& rect : data.collisionRects) {
+        DrawRectangleRec(rect, ColorAlpha(RED, 0.35f));
+        DrawRectangleLinesEx(rect, 1.0f, RED);
+    }
+
+    // 2. Тригери взаємодій — напівпрозорий зелений
+    for (size_t i = 0; i < data.triggers.size(); ++i) {
+        DrawRectangleRec(data.triggers[i], ColorAlpha(GREEN, 0.35f));
+        DrawRectangleLinesEx(data.triggers[i], 1.0f, GREEN);
+        if (i < data.triggerNames.size()) {
+            DrawText(data.triggerNames[i].c_str(), (int)data.triggers[i].x, (int)data.triggers[i].y - 12, 10, GREEN);
+        }
+    }
+
+    // 3. Таргети телепортів (_t) — напівпрозорий блакитний
+    for (const auto& [name, rect] : data.teleportTargets) {
+        DrawRectangleRec(rect, ColorAlpha(SKYBLUE, 0.45f));
+        DrawRectangleLinesEx(rect, 1.0f, SKYBLUE);
+        DrawText(name.c_str(), (int)rect.x, (int)rect.y - 12, 10, SKYBLUE);
+    }
+
+    // 4. Спавни об'єктів (точки) — напівпрозорий фіолетовий
+    DrawCircleV(data.playerSpawn, 10.0f, ColorAlpha(PURPLE, 0.6f));
+    DrawCircleLinesV(data.playerSpawn, 10.0f, PURPLE);
+
+    for (const auto& spawn : data.guardSpawns) {
+        DrawCircleV(spawn, 10.0f, ColorAlpha(PURPLE, 0.6f));
+        DrawCircleLinesV(spawn, 10.0f, PURPLE);
+    }
+}
+
 bool GameMap::CheckWallCollision(Rectangle playerHitbox) const {
     for (const auto& rect : data.collisionRects) {
         if (CheckCollisionRecs(playerHitbox, rect)) {
@@ -180,12 +214,45 @@ bool GameMap::CheckWallCollision(Rectangle playerHitbox) const {
     return false;
 }
 
-void GameMap::UpdateDoorTriggers(Rectangle playerHitbox) {
-    currentDoorMessage = "";
-    for (size_t i = 0; i < data.doorTriggers.size(); ++i) {
-        if (CheckCollisionRecs(playerHitbox, data.doorTriggers[i])) {
-            currentDoorMessage = (i < data.doorNumbers.size()) ? data.doorNumbers[i] : "unknown";
+void GameMap::UpdateTriggers(Rectangle playerHitbox) {
+    currentTriggerMessage = "";
+    for (size_t i = 0; i < data.triggers.size(); ++i) {
+        if (CheckCollisionRecs(playerHitbox, data.triggers[i])) {
+            currentTriggerMessage = (i < data.triggerNames.size()) ? data.triggerNames[i] : "unknown";
             break;
         }
     }
+}
+
+bool GameMap::TryGetTeleportDestination(Rectangle playerFootHitbox, Vector2 playerPos, Vector2& outNewPlayerPos) const {
+    for (size_t i = 0; i < data.triggers.size(); ++i) {
+        if (CheckCollisionRecs(playerFootHitbox, data.triggers[i])) {
+            if (i < data.triggerNames.size()) {
+                std::string targetKey = data.triggerNames[i] + "_t";
+                auto it = data.teleportTargets.find(targetKey);
+                if (it != data.teleportTargets.end()) {
+                    const Rectangle& targetRect = it->second;
+
+                    // Зміщення ніг відносно верхнього лівого кута спрайта гравця
+                    float footOffsetX = playerFootHitbox.x - playerPos.x;
+                    float footOffsetY = playerFootHitbox.y - playerPos.y;
+
+                    // Центруємо ноги гравця по центру прямокутника _t
+                    float targetFootX = targetRect.x + (targetRect.width - playerFootHitbox.width) * 0.5f;
+                    float targetFootY = targetRect.y + (targetRect.height - playerFootHitbox.height) * 0.5f;
+
+                    outNewPlayerPos = {
+                        targetFootX - footOffsetX,
+                        targetFootY - footOffsetY
+                    };
+
+                    GAME_INFO("TELEPORT", "Triggered '%s' -> moving to '%s' (%.1f, %.1f)",
+                        data.triggerNames[i].c_str(), targetKey.c_str(), outNewPlayerPos.x, outNewPlayerPos.y);
+
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
 }

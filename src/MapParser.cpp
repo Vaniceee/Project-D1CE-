@@ -1,6 +1,5 @@
 #include "MapParser.h"
 
-
 std::string MapParser::ToLower(std::string str) {
     std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
     return str;
@@ -256,8 +255,8 @@ void MapParser::ParseObjectLayers(const std::string& content, MapData& outData) 
             lowerLayerName.find("interact") != std::string::npos ||
             lowerLayerName.find("двер") != std::string::npos)
         {
-            ParseRectLayer(content, layerName, outData.doorTriggers, &outData.doorNumbers);
-            GAME_DEBUG("MAP_PARSER", "Auto-detected TRIGGER/DOOR layer: '%s'", layerName.c_str());
+            ParseRectLayer(content, layerName, outData.triggers, &outData.triggerNames, &outData.teleportTargets);
+            GAME_DEBUG("MAP_PARSER", "Auto-detected TRIGGER layer: '%s'", layerName.c_str());
         }
         else if (lowerLayerName.find("spawn") != std::string::npos ||
             lowerLayerName.find("entit") != std::string::npos)
@@ -438,7 +437,13 @@ void MapParser::ParseVisualObjectLayer(const std::string& content, const std::st
     }
 }
 
-void MapParser::ParseRectLayer(const std::string& content, const std::string& layerName, std::vector<Rectangle>& rects, std::vector<std::string>* names) {
+void MapParser::ParseRectLayer(
+    const std::string& content,
+    const std::string& layerName,
+    std::vector<Rectangle>& rects,
+    std::vector<std::string>* names,
+    std::unordered_map<std::string, Rectangle>* targets)
+{
     size_t layerPos = content.find("\"name\":\"" + layerName + "\"");
     if (layerPos == std::string::npos) return;
 
@@ -476,19 +481,36 @@ void MapParser::ParseRectLayer(const std::string& content, const std::string& la
             catch (...) { return 0.0f; }
             };
 
-        rects.push_back({ getFloat("x"), getFloat("y"), getFloat("width"), getFloat("height") });
+        Rectangle rect = { getFloat("x"), getFloat("y"), getFloat("width"), getFloat("height") };
 
-        if (names) {
-            size_t valPos = obj.find("\"name\":\"");
-            if (valPos != std::string::npos) {
-                size_t valStart = valPos + 8;
-                size_t valEnd = obj.find("\"", valStart);
-                names->push_back(obj.substr(valStart, valEnd - valStart));
-            }
-            else {
-                names->push_back("unknown");
+        // Надійне зчитування імені незалежно від пробілів після двокрапки у JSON
+        std::string objName = "unknown";
+        size_t valPos = obj.find("\"name\"");
+        if (valPos != std::string::npos) {
+            size_t colonPos = obj.find(":", valPos);
+            if (colonPos != std::string::npos) {
+                size_t quoteStart = obj.find("\"", colonPos + 1);
+                if (quoteStart != std::string::npos) {
+                    size_t quoteEnd = obj.find("\"", quoteStart + 1);
+                    if (quoteEnd != std::string::npos) {
+                        objName = obj.substr(quoteStart + 1, quoteEnd - (quoteStart + 1));
+                    }
+                }
             }
         }
+
+        if (targets && objName.size() > 2 && objName.substr(objName.size() - 2) == "_t") {
+            (*targets)[objName] = rect;
+            GAME_INFO("MAP_PARSER", "Registered teleport target '%s' at (%.1f, %.1f)", objName.c_str(), rect.x, rect.y);
+        }
+        else {
+            rects.push_back(rect);
+            if (names) {
+                names->push_back(objName);
+            }
+            GAME_DEBUG("MAP_PARSER", "Registered trigger '%s' at (%.1f, %.1f)", objName.c_str(), rect.x, rect.y);
+        }
+
         objStart = objectsText.find("{", objEnd);
     }
 }

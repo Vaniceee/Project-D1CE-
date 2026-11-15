@@ -53,7 +53,21 @@ private:
     float flickerTimer = 0.0f;
     float currentFlicker = 1.0f;
 
-    // Прапорці
+    // Прапорці та стани переходу локації
     bool isPaused = false;
     bool isGameOverProcessed = false;
+    bool showDebugOverlay = false;
+
+    enum class TeleportPhase {
+        NONE,
+        FADING_OUT,
+        FADING_IN
+    };
+
+    TeleportPhase tpPhase = TeleportPhase::NONE;
+    float tpFadeAlpha = 0.0f;
+    float tpFadeSpeed = 2.8f; // ~0.35 сек на затемнення і ~0.35 сек на проявлення
+    Vector2 pendingTeleportPos = { 0.0f, 0.0f };
+    bool waitForKeysRelease = false;
+    bool wasInTrigger = false;
 };

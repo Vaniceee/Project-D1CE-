@@ -35,8 +35,9 @@ struct MapData {
     std::vector<std::vector<int>> belowPlayerLayers;
     std::vector<std::vector<int>> abovePlayerLayers;
     std::vector<Rectangle> collisionRects;
-    std::vector<Rectangle> doorTriggers;
-    std::vector<std::string> doorNumbers;
+    std::vector<Rectangle> triggers;
+    std::vector<std::string> triggerNames;
+    std::unordered_map<std::string, Rectangle> teleportTargets;
     std::vector<MapVisualObject> visualObjects;
 
     Vector2 playerSpawn = { 1944.0f, 2464.0f };
@@ -52,24 +53,26 @@ public:
     void DrawBelowPlayer() const;
     void DrawAbovePlayer() const;
     void DrawVisualObject(const MapVisualObject& obj) const;
+    void DrawDebug() const;
 
     // Ігрова логіка
     bool CheckWallCollision(Rectangle playerHitbox) const;
-    void UpdateDoorTriggers(Rectangle playerHitbox);
+    void UpdateTriggers(Rectangle playerHitbox);
+    bool TryGetTeleportDestination(Rectangle playerFootHitbox, Vector2 playerPos, Vector2& outNewPlayerPos) const;
 
     // Гетери
     int GetWidth() const { return data.mapWidth; }
     int GetHeight() const { return data.mapHeight; }
     int GetTileWidth() const { return data.tileWidth; }
     int GetTileHeight() const { return data.tileHeight; }
-    const std::string& GetCurrentDoorMessage() const { return currentDoorMessage; }
+    const std::string& GetCurrentTriggerMessage() const { return currentTriggerMessage; }
     const std::vector<MapVisualObject>& GetVisualObjects() const { return data.visualObjects; }
     Vector2 GetPlayerSpawn() const { return data.playerSpawn; }
     const std::vector<Vector2>& GetGuardSpawns() const { return data.guardSpawns; }
 
 private:
     MapData data;
-    std::string currentDoorMessage = "";
+    std::string currentTriggerMessage = "";
 
     void DrawSingleLayer(const std::vector<int>& layerData) const;
 };

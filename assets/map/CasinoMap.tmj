@@ -2600,8 +2600,8 @@
                                  "type":"",
                                  "visible":true,
                                  "width":157.5,
-                                 "x":5215.33333333333,
-                                 "y":5445.16666666667
+                                 "x":5218.42424242424,
+                                 "y":5450.25757575758
                                 }, 
                                 {
                                  "height":202.583333333334,
@@ -3368,8 +3368,8 @@
                                  "type":"",
                                  "visible":true,
                                  "width":2410.66666666667,
-                                 "x":4098.66666666667,
-                                 "y":-32
+                                 "x":4098.41666666667,
+                                 "y":-30.75
                                 }, 
                                 {
                                  "height":528,
@@ -3464,8 +3464,8 @@
                                  "type":"",
                                  "visible":true,
                                  "width":288,
-                                 "x":5212,
-                                 "y":4
+                                 "x":5217.25,
+                                 "y":3.5
                                 }, 
                                 {
                                  "height":1.33333333333334,
@@ -3613,7 +3613,7 @@
                                 }],
                          "opacity":1,
                          "type":"objectgroup",
-                         "visible":false,
+                         "visible":true,
                          "x":0,
                          "y":0
                         }, 
@@ -3621,7 +3621,115 @@
                          "draworder":"topdown",
                          "id":7,
                          "name":"Triggers",
-                         "objects":[],
+                         "objects":[
+                                {
+                                 "height":21.3333333333339,
+                                 "id":429,
+                                 "name":"room1_out",
+                                 "opacity":1,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":95.6666666666661,
+                                 "x":5376.18181818182,
+                                 "y":5522.30303030303
+                                }, 
+                                {
+                                 "height":16.1818181818182,
+                                 "id":430,
+                                 "name":"room1_out_t",
+                                 "opacity":1,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":33.6363636363631,
+                                 "x":5825.63636363637,
+                                 "y":133.022727272727
+                                }, 
+                                {
+                                 "height":17.25,
+                                 "id":431,
+                                 "name":"room2_out",
+                                 "opacity":1,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":95.25,
+                                 "x":4384,
+                                 "y":6264.75
+                                }, 
+                                {
+                                 "height":19,
+                                 "id":433,
+                                 "name":"room1_in_t",
+                                 "opacity":1,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":32.333333333333,
+                                 "x":5408.66666666666,
+                                 "y":5563
+                                }, 
+                                {
+                                 "height":11.0909090909091,
+                                 "id":434,
+                                 "name":"room1_in",
+                                 "opacity":1,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":96.363636363636,
+                                 "x":5791.88636363636,
+                                 "y":102.477272727273
+                                }, 
+                                {
+                                 "height":0,
+                                 "id":435,
+                                 "name":"",
+                                 "opacity":1,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":5794,
+                                 "y":125.636363636364
+                                }, 
+                                {
+                                 "height":17.454545454546,
+                                 "id":436,
+                                 "name":"room2_in_t",
+                                 "opacity":1,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":20.7272727272721,
+                                 "x":4421.87878787878,
+                                 "y":6223.84848484849
+                                }, 
+                                {
+                                 "height":52.375,
+                                 "id":438,
+                                 "name":"room2_in",
+                                 "opacity":1,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":6.125,
+                                 "x":5210.375,
+                                 "y":109.75
+                                }, 
+                                {
+                                 "height":0,
+                                 "id":439,
+                                 "name":"room2_out_t",
+                                 "opacity":1,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":5180.16666666667,
+                                 "y":140.291666666667
+                                }],
                          "opacity":1,
                          "type":"objectgroup",
                          "visible":true,
@@ -3709,7 +3817,7 @@
          "y":0
         }],
  "nextlayerid":24,
- "nextobjectid":429,
+ "nextobjectid":441,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.2",
