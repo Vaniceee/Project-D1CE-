@@ -256,3 +256,17 @@ bool GameMap::TryGetTeleportDestination(Rectangle playerFootHitbox, Vector2 play
     }
     return false;
 }
+
+
+bool GameMap::TryGetActiveTriggerCenter(Rectangle footHitbox, Vector2& outTriggerCenter) const {
+    for (size_t i = 0; i < data.triggers.size(); ++i) {
+        if (CheckCollisionRecs(footHitbox, data.triggers[i])) {
+            outTriggerCenter = {
+                data.triggers[i].x + data.triggers[i].width * 0.5f,
+                data.triggers[i].y + data.triggers[i].height * 0.5f
+            };
+            return true;
+        }
+    }
+    return false;
+}

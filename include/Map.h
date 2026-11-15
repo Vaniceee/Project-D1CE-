@@ -59,6 +59,7 @@ public:
     bool CheckWallCollision(Rectangle playerHitbox) const;
     void UpdateTriggers(Rectangle playerHitbox);
     bool TryGetTeleportDestination(Rectangle playerFootHitbox, Vector2 playerPos, Vector2& outNewPlayerPos) const;
+    bool TryGetActiveTriggerCenter(Rectangle footHitbox, Vector2& outTriggerCenter) const;
 
     // Гетери
     int GetWidth() const { return data.mapWidth; }

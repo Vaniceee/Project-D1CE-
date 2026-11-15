@@ -52,7 +52,8 @@ void GameplayState::Init() {
     // 2. Спавн охоронця з мапи
     const auto& guardSpawns = gameMap.GetGuardSpawns();
     Vector2 guardPos = !guardSpawns.empty() ? guardSpawns[0] : Vector2{ 2200.0f, 2464.0f };
-    guard = std::make_unique<Guard>(guardPos, 70.0f);
+    guard = std::make_unique<Guard>(guardPos, 119.0f);
+    guard->InitPathfinding(gameMap);
 
     // 3. Ініціалізація камери
     gameCamera.Init(startPos, virtualWidth, virtualHeight, 1.8f);
@@ -166,6 +167,11 @@ void GameplayState::Update() {
             if (isInTriggerNow && !wasInTrigger) {
                 Vector2 newPlayerPos;
                 if (gameMap.TryGetTeleportDestination(footCollider, player->GetPosition(), newPlayerPos)) {
+                    Vector2 enteredTriggerCenter;
+                    if (guard && gameMap.TryGetActiveTriggerCenter(footCollider, enteredTriggerCenter)) {
+                        guard->OnPlayerTeleported(enteredTriggerCenter);
+                    }
+
                     pendingTeleportPos = newPlayerPos;
                     tpPhase = TeleportPhase::FADING_OUT;
                     wasInTrigger = true;
