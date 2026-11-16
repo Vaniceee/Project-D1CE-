@@ -7442,8 +7442,27 @@
          "tilewidth":50
         }, 
         {
+         "columns":0,
          "firstgid":2214,
-         "source":"..\/..\/map\/Casino oop\/casino tiles 32x32\/Couches 1.tsx"
+         "grid":
+            {
+             "height":1,
+             "orientation":"orthogonal",
+             "width":1
+            },
+         "margin":0,
+         "name":"closets",
+         "spacing":0,
+         "tilecount":1,
+         "tileheight":128,
+         "tiles":[
+                {
+                 "id":0,
+                 "image":"png\/objects\/closets\/closet1.png",
+                 "imageheight":128,
+                 "imagewidth":64
+                }],
+         "tilewidth":64
         }],
  "tilewidth":32,
  "type":"map",
