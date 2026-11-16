@@ -6,6 +6,7 @@
 #include "Map.h"
 #include "RenderSystem.h"
 #include "GameCamera.h"
+#include "GameplayUI.h"
 #include "AssetManager.h"
 #include "config.h"
 #include "raylib.h"
@@ -14,15 +15,6 @@
 #include <vector>
 #include <cmath>
 #include <memory>
-
-struct PauseButton {
-    Rectangle bounds;
-    std::string text;
-    bool isHovered = false;
-    bool wasHovered = false;
-    float hoverProgress = 0.0f;
-    bool isDanger = false;
-};
 
 class GameplayState : public GameState {
 public:
@@ -35,13 +27,13 @@ private:
     GameMap gameMap;
     RenderSystem renderSystem;
     GameCamera gameCamera;
+    GameplayUI hudUI;
 
     std::unique_ptr<Player> player;
     std::unique_ptr<Guard> guard;
 
     Music bgMusic = { 0 };
 
-    // --- UI КАРТИ ЖИТТІВ ---
     int lastPlayerLives = 3;
     float cardFlickerTimer = 0.0f;
     float cardFlickerDuration = 0.45f;
@@ -76,7 +68,6 @@ private:
     float lightDipDuration = 0.14f;
     float lightDipDepth = 0.0f;
 
-    // Мікро-інерція джерела світла
     Vector2 lightWorldPos = { 0.0f, 0.0f };
     Vector2 lightVelocity = { 0.0f, 0.0f };
     bool isLightPosInitialized = false;
@@ -92,27 +83,19 @@ private:
     std::vector<SprintDustParticle> sprintDust;
     float sprintDustTimer = 0.0f;
 
-    // --- ВІЗУАЛЬНІ ЕФЕКТИ ВИЯВЛЕННЯ ТА ПЕРЕМИКАННЯ КАМЕР ---
+    // --- ЕФЕКТИ ВИЯВЛЕННЯ ТА ПЕРЕМИКАННЯ КАМЕР ---
     GuardState lastGuardState = GuardState::PATROL;
     float detectionFlashTimer = 0.0f;
     float baseCameraZoom = 1.8f;
     int currentCamNumber = 1;
 
-    // --- ПАУЗА ---
+    // --- СТАН ПАУЗИ ТА СМЕРТІ ---
     bool isPaused = false;
-    float pauseAnimTime = 0.0f;
-    Sound pauseHoverSound = { 0 };
-    bool hasPauseHoverSound = false;
-    PauseButton resumeButton;
-    PauseButton exitToMenuButton;
-    void UpdatePauseMenu(float dt);
-    void DrawPauseMenu();
-    void DrawPauseButton(const PauseButton& btn);
-
-    // --- СМЕРТЬ ТА ПЕРЕХІД В GAME OVER ---
     bool isDying = false;
-    float deathFadeAlpha = 0.0f;
-    float deathFadeSpeed = 1.2f;
+    float deathTimer = 0.0f;
+    float deathDuration = 2.35f;
+    Vector2 deathFocusPos = { 0.0f, 0.0f };
+    void UpdateDeathSequence(float dt);
 
     bool showDebugOverlay = false;
 

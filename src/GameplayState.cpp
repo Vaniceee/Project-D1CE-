@@ -3,7 +3,6 @@
 #include "GameOverState.h"
 #include "GameManager.h"
 #include "InputManager.h"
-#include "CustomCursor.h"
 
 void GameplayState::Init() {
     targetTexture = LoadRenderTexture(virtualWidth, virtualHeight);
@@ -33,7 +32,6 @@ void GameplayState::Init() {
     SetShaderValue(lightShader, exhaustionLoc, &zeroVal, SHADER_UNIFORM_FLOAT);
     SetShaderValue(lightShader, panicLoc, &zeroVal, SHADER_UNIFORM_FLOAT);
     SetShaderValue(lightShader, timeLoc, &zeroVal, SHADER_UNIFORM_FLOAT);
-    // ====================================================
 
     AssetManager& am = AssetManager::Instance();
 
@@ -57,35 +55,11 @@ void GameplayState::Init() {
     am.LoadSound("card_rip", Config::PATH_SFX_CARD_RIP);
 
     am.LoadTexture("card_lives", Config::PATH_PNG_CARD_LIVES);
-
     am.LoadMusic("guard_chase", Config::PATH_AUDIO_GUARD_CHASE);
 
-    // Генерація короткого клацання для кнопок паузи
-    Wave clickWave = { 0 };
-    clickWave.sampleRate = 44100;
-    clickWave.sampleSize = 16;
-    clickWave.channels = 1;
-    clickWave.frameCount = 1100;
-    short* samples = (short*)RL_MALLOC(clickWave.frameCount * sizeof(short));
-    if (samples != nullptr) {
-        for (unsigned int i = 0; i < clickWave.frameCount; ++i) {
-            float t = (float)i / (float)clickWave.sampleRate;
-            float env = expf(-t * 145.0f);
-            float sig = sinf(2.0f * PI * 940.0f * t) * 0.65f + sinf(2.0f * PI * 1880.0f * t) * 0.35f;
-            samples[i] = (short)(sig * env * 11000.0f);
-        }
-        clickWave.data = samples;
-        pauseHoverSound = LoadSoundFromWave(clickWave);
-        UnloadWave(clickWave);
-        hasPauseHoverSound = (pauseHoverSound.stream.buffer != nullptr);
-        if (hasPauseHoverSound) {
-            SetSoundVolume(pauseHoverSound, 0.26f);
-        }
-    }
-
+    hudUI.Init();
     gameMap.Load(Config::PATH_MAP);
 
-    // 1. Спавн гравця з мапи
     Vector2 startPos = gameMap.GetPlayerSpawn();
     player = std::make_unique<Player>(startPos, 112.0f, 32.0f, 64.0f, am.GetTexture("player_spritesheet"), 1.45f);
 
@@ -97,42 +71,18 @@ void GameplayState::Init() {
     lightVelocity = { 0.0f, 0.0f };
     isLightPosInitialized = true;
 
-    // 2. Спавн охоронця з мапи
     const auto& guardSpawns = gameMap.GetGuardSpawns();
     Vector2 guardPos = !guardSpawns.empty() ? guardSpawns[0] : Vector2{ 2200.0f, 2464.0f };
     guard = std::make_unique<Guard>(guardPos, 70.0f);
     guard->InitPathfinding(gameMap);
 
-    // 3. Ініціалізація камери
     baseCameraZoom = 1.8f;
     gameCamera.Init(startPos, virtualWidth, virtualHeight, baseCameraZoom);
 
-    // 4. Ініціалізація кнопок меню паузи
-    float screenW = (float)GetScreenWidth();
-    float screenH = (float)GetScreenHeight();
-    float btnWidth = 310.0f;
-    float btnHeight = 58.0f;
-    float btnX = (screenW - btnWidth) * 0.5f;
-
-    resumeButton.bounds = { btnX, (screenH * 0.5f) - 36.0f, btnWidth, btnHeight };
-    resumeButton.text = "RESUME";
-    resumeButton.isHovered = false;
-    resumeButton.wasHovered = false;
-    resumeButton.hoverProgress = 0.0f;
-    resumeButton.isDanger = false;
-
-    exitToMenuButton.bounds = { btnX, (screenH * 0.5f) + 44.0f, btnWidth, btnHeight };
-    exitToMenuButton.text = "MAIN MENU";
-    exitToMenuButton.isHovered = false;
-    exitToMenuButton.wasHovered = false;
-    exitToMenuButton.hoverProgress = 0.0f;
-    exitToMenuButton.isDanger = true;
-
-    // Скидання станів
     isPaused = false;
-    pauseAnimTime = 0.0f;
     isDying = false;
-    deathFadeAlpha = 0.0f;
+    deathTimer = 0.0f;
+    deathFocusPos = startPos;
     tpPhase = TeleportPhase::NONE;
     tpFadeAlpha = 0.0f;
     waitForKeysRelease = false;
@@ -151,16 +101,14 @@ void GameplayState::Init() {
     lastGuardState = GuardState::PATROL;
     detectionFlashTimer = 0.0f;
     currentCamNumber = 1;
+    lastPlayerLives = player ? player->GetLives() : 3;
+    cardFlickerTimer = 0.0f;
 
-    //======================MUSIC======================
     AssetManager::Instance().LoadMusic("ambient", Config::PATH_AUDIO_AMBIENT);
     bgMusic = AssetManager::Instance().GetMusic("ambient");
-
     SetMusicVolume(bgMusic, 0.046f);
     bgMusic.looping = true;
-
     PlayMusicStream(bgMusic);
-    //=================================================
 }
 
 void GameplayState::Cleanup() {
@@ -168,13 +116,8 @@ void GameplayState::Cleanup() {
     if (guard) {
         guard->StopAudio();
     }
+    hudUI.Cleanup();
     gameMap.Unload();
-
-    if (hasPauseHoverSound) {
-        UnloadSound(pauseHoverSound);
-        pauseHoverSound = { 0 };
-        hasPauseHoverSound = false;
-    }
 
     if (lightShader.id != 0) {
         UnloadShader(lightShader);
@@ -190,43 +133,47 @@ void GameplayState::Cleanup() {
     AssetManager::Instance().UnloadAll();
 }
 
-void GameplayState::UpdatePauseMenu(float dt) {
-    pauseAnimTime += dt;
-    Vector2 mousePos = GetMousePosition();
+void GameplayState::UpdateDeathSequence(float dt) {
+    deathTimer += dt;
+    shaderTime += dt;
 
-    resumeButton.wasHovered = resumeButton.isHovered;
-    exitToMenuButton.wasHovered = exitToMenuButton.isHovered;
+    float progress = Clamp(deathTimer / deathDuration, 0.0f, 1.0f);
 
-    resumeButton.isHovered = CheckCollisionPointRec(mousePos, resumeButton.bounds);
-    exitToMenuButton.isHovered = CheckCollisionPointRec(mousePos, exitToMenuButton.bounds);
+    UpdateMusicStream(bgMusic);
+    SetMusicVolume(bgMusic, 0.046f * Clamp(1.0f - progress * 1.35f, 0.0f, 1.0f));
+    SetMusicPitch(bgMusic, Lerp(1.0f, 0.55f, progress));
 
-    if (hasPauseHoverSound) {
-        if (resumeButton.isHovered && !resumeButton.wasHovered) {
-            SetSoundPitch(pauseHoverSound, 1.08f);
-            PlaySound(pauseHoverSound);
-        }
-        else if (exitToMenuButton.isHovered && !exitToMenuButton.wasHovered) {
-            SetSoundPitch(pauseHoverSound, 0.86f);
-            PlaySound(pauseHoverSound);
-        }
+    if (progress < 0.14f) {
+        gameCamera.SetMinTrauma(0.65f);
+    }
+    else if (progress > 0.72f && progress < 0.82f) {
+        gameCamera.SetMinTrauma(0.45f);
     }
 
-    float animSpeed = 1.0f - expf(-12.0f * dt);
-    resumeButton.hoverProgress = Lerp(resumeButton.hoverProgress, resumeButton.isHovered ? 1.0f : 0.0f, animSpeed);
-    exitToMenuButton.hoverProgress = Lerp(exitToMenuButton.hoverProgress, exitToMenuButton.isHovered ? 1.0f : 0.0f, animSpeed);
+    float targetDeathZoom = Lerp(baseCameraZoom, 2.55f, 1.0f - powf(1.0f - progress, 2.2f));
+    gameCamera.SetZoom(Lerp(gameCamera.GetZoom(), targetDeathZoom, 1.0f - expf(-8.0f * dt)));
+    gameCamera.Update(deathFocusPos, false, false, true, 0.0f, dt);
 
-    CustomCursor::Update(dt, resumeButton.isHovered || exitToMenuButton.isHovered);
+    float lightDecay = Clamp(1.0f - (progress / 0.48f), 0.0f, 1.0f);
+    float dyingFlicker = (lightDecay > 0.02f)
+        ? (lightDecay * (0.65f + 0.35f * sinf(deathTimer * 54.0f)))
+        : 0.0f;
 
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        if (resumeButton.isHovered) {
-            isPaused = false;
-            ResumeMusicStream(bgMusic);
-            if (guard) guard->SetAudioPaused(false);
-        }
-        else if (exitToMenuButton.isHovered) {
-            GameManager::Instance().ChangeState(new MainMenuState());
-            return;
-        }
+    float maxVal = 1.0f;
+    float maxExhaustion = Clamp(0.5f + progress * 0.5f, 0.0f, 1.0f);
+
+    SetShaderValue(lightShader, flickerLoc, &dyingFlicker, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(lightShader, dangerLoc, &maxVal, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(lightShader, panicLoc, &maxVal, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(lightShader, exhaustionLoc, &maxExhaustion, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(lightShader, timeLoc, &shaderTime, SHADER_UNIFORM_FLOAT);
+
+    Vector2 lightScreenPos = gameCamera.GetScreenPosition(deathFocusPos);
+    float pos[2] = { lightScreenPos.x, (float)virtualHeight - lightScreenPos.y };
+    SetShaderValue(lightShader, playerPosLoc, pos, SHADER_UNIFORM_VEC2);
+
+    if (deathTimer >= deathDuration) {
+        GameManager::Instance().ChangeState(new GameOverState());
     }
 }
 
@@ -234,23 +181,14 @@ void GameplayState::Update() {
     float dt = GetFrameTime();
 
     if (isDying) {
-        UpdateMusicStream(bgMusic);
-        deathFadeAlpha += deathFadeSpeed * dt;
-        SetMusicVolume(bgMusic, 0.046f * (1.0f - (deathFadeAlpha > 1.0f ? 1.0f : deathFadeAlpha)));
-
-        if (deathFadeAlpha >= 1.0f) {
-            GameManager::Instance().ChangeState(new GameOverState());
-            return;
-        }
+        UpdateDeathSequence(dt);
         return;
     }
 
     if (InputManager::IsPausePressed() && tpPhase == TeleportPhase::NONE) {
         isPaused = !isPaused;
         if (isPaused) {
-            pauseAnimTime = 0.0f;
-            resumeButton.hoverProgress = 0.0f;
-            exitToMenuButton.hoverProgress = 0.0f;
+            hudUI.ResetPauseMenu();
             PauseMusicStream(bgMusic);
             if (guard) guard->SetAudioPaused(true);
         }
@@ -261,7 +199,16 @@ void GameplayState::Update() {
     }
 
     if (isPaused) {
-        UpdatePauseMenu(dt);
+        PauseMenuAction action = hudUI.UpdatePauseMenu(dt);
+        if (action == PauseMenuAction::RESUME) {
+            isPaused = false;
+            ResumeMusicStream(bgMusic);
+            if (guard) guard->SetAudioPaused(false);
+        }
+        else if (action == PauseMenuAction::MAIN_MENU) {
+            GameManager::Instance().ChangeState(new MainMenuState());
+            return;
+        }
         return;
     }
 
@@ -269,291 +216,279 @@ void GameplayState::Update() {
         showDebugOverlay = !showDebugOverlay;
     }
 
-    if (player) {
-        UpdateMusicStream(bgMusic);
-        shaderTime += dt;
+    if (!player) return;
 
-        Vector2 currentInputDir = InputManager::GetMovementDirection();
-        bool anyMoveKeyPressed = (currentInputDir.x != 0.0f || currentInputDir.y != 0.0f);
+    UpdateMusicStream(bgMusic);
+    shaderTime += dt;
 
-        if (waitForKeysRelease && !anyMoveKeyPressed) {
-            waitForKeysRelease = false;
+    Vector2 currentInputDir = InputManager::GetMovementDirection();
+    bool anyMoveKeyPressed = (currentInputDir.x != 0.0f || currentInputDir.y != 0.0f);
+
+    if (waitForKeysRelease && !anyMoveKeyPressed) {
+        waitForKeysRelease = false;
+    }
+
+    if (tpPhase == TeleportPhase::FADING_OUT) {
+        tpFadeAlpha += tpFadeSpeed * dt;
+        if (tpFadeAlpha >= 1.0f) {
+            tpFadeAlpha = 1.0f;
+            player->SetPosition(pendingTeleportPos);
+
+            Rectangle newFoot = player->GetFootCollider();
+            lightWorldPos = {
+                newFoot.x + newFoot.width * 0.5f,
+                newFoot.y + newFoot.height * 0.5f
+            };
+            lightVelocity = { 0.0f, 0.0f };
+
+            tpPhase = TeleportPhase::FADING_IN;
+            currentCamNumber = (currentCamNumber % 8) + 1;
         }
-
-        if (tpPhase == TeleportPhase::FADING_OUT) {
-            tpFadeAlpha += tpFadeSpeed * dt;
-            if (tpFadeAlpha >= 1.0f) {
-                tpFadeAlpha = 1.0f;
-                player->SetPosition(pendingTeleportPos);
-
-                Rectangle newFoot = player->GetFootCollider();
-                lightWorldPos = {
-                    newFoot.x + newFoot.width * 0.5f,
-                    newFoot.y + newFoot.height * 0.5f
-                };
-                lightVelocity = { 0.0f, 0.0f };
-
-                tpPhase = TeleportPhase::FADING_IN;
-                currentCamNumber = (currentCamNumber % 8) + 1;
-            }
+    }
+    else if (tpPhase == TeleportPhase::FADING_IN) {
+        tpFadeAlpha -= tpFadeSpeed * dt;
+        if (tpFadeAlpha <= 0.0f) {
+            tpFadeAlpha = 0.0f;
+            tpPhase = TeleportPhase::NONE;
+            waitForKeysRelease = true;
         }
-        else if (tpPhase == TeleportPhase::FADING_IN) {
-            tpFadeAlpha -= tpFadeSpeed * dt;
-            if (tpFadeAlpha <= 0.0f) {
-                tpFadeAlpha = 0.0f;
-                tpPhase = TeleportPhase::NONE;
-                waitForKeysRelease = true;
-            }
+    }
+
+    bool isMovementBlocked = (tpPhase != TeleportPhase::NONE) || waitForKeysRelease;
+    if (!isMovementBlocked) {
+        player->Update(gameMap);
+    }
+
+    int currentLives = player->GetLives();
+    if (currentLives < lastPlayerLives) {
+        cardFlickerTimer = cardFlickerDuration;
+        lastPlayerLives = currentLives;
+        damageImpulse = 1.0f;
+        gameCamera.AddTrauma(0.55f);
+    }
+
+    if (cardFlickerTimer > 0.0f) {
+        cardFlickerTimer -= dt;
+        if (cardFlickerTimer < 0.0f) cardFlickerTimer = 0.0f;
+    }
+
+    if (damageImpulse > 0.0f) {
+        damageImpulse -= dt * 1.4f;
+        if (damageImpulse < 0.0f) damageImpulse = 0.0f;
+    }
+
+    if (guard) {
+        guard->Update(*player, gameMap, dt);
+
+        GuardState nowState = guard->GetCurrentState();
+        if (nowState == GuardState::CHASE && lastGuardState != GuardState::CHASE) {
+            detectionFlashTimer = 0.42f;
+            damageImpulse = fmaxf(damageImpulse, 0.65f);
+            gameCamera.AddTrauma(0.38f);
         }
+        lastGuardState = nowState;
+    }
 
-        bool isMovementBlocked = (tpPhase != TeleportPhase::NONE) || waitForKeysRelease;
-        if (!isMovementBlocked) {
-            player->Update(gameMap);
-        }
+    if (detectionFlashTimer > 0.0f) {
+        detectionFlashTimer -= dt;
+        if (detectionFlashTimer < 0.0f) detectionFlashTimer = 0.0f;
+    }
 
-        int currentLives = player->GetLives();
-        if (currentLives < lastPlayerLives) {
-            cardFlickerTimer = cardFlickerDuration;
-            lastPlayerLives = currentLives;
-            damageImpulse = 1.0f;
-            gameCamera.AddTrauma(0.55f);
-        }
-
-        if (cardFlickerTimer > 0.0f) {
-            cardFlickerTimer -= dt;
-            if (cardFlickerTimer < 0.0f) cardFlickerTimer = 0.0f;
-        }
-
-        if (damageImpulse > 0.0f) {
-            damageImpulse -= dt * 1.4f;
-            if (damageImpulse < 0.0f) damageImpulse = 0.0f;
-        }
-
-        if (guard) {
-            guard->Update(*player, gameMap, dt);
-
-            // Спалах виявлення, коли охоронець щойно перейшов у CHASE
-            GuardState nowState = guard->GetCurrentState();
-            if (nowState == GuardState::CHASE && lastGuardState != GuardState::CHASE) {
-                detectionFlashTimer = 0.42f;
-                damageImpulse = fmaxf(damageImpulse, 0.65f);
-                gameCamera.AddTrauma(0.38f);
-            }
-            lastGuardState = nowState;
-        }
-
-        if (detectionFlashTimer > 0.0f) {
-            detectionFlashTimer -= dt;
-            if (detectionFlashTimer < 0.0f) detectionFlashTimer = 0.0f;
-        }
-
-        // Оновлення частинок пилу під ногами під час спринту
-        for (size_t i = 0; i < sprintDust.size(); ) {
-            sprintDust[i].pos = Vector2Add(sprintDust[i].pos, Vector2Scale(sprintDust[i].vel, dt));
-            sprintDust[i].life -= dt;
-            if (sprintDust[i].life <= 0.0f) {
-                sprintDust.erase(sprintDust.begin() + i);
-            }
-            else {
-                ++i;
-            }
-        }
-
-        if (!isMovementBlocked && player->IsMoving() && player->IsSprinting()) {
-            sprintDustTimer -= dt;
-            if (sprintDustTimer <= 0.0f) {
-                sprintDustTimer = 0.065f;
-                Rectangle pf = player->GetFootCollider();
-                SprintDustParticle p;
-                p.pos = {
-                    pf.x + pf.width * 0.5f + (float)GetRandomValue(-5, 5),
-                    pf.y + pf.height - 2.0f
-                };
-                p.vel = {
-                    (float)GetRandomValue(-14, 14),
-                    (float)GetRandomValue(-18, -6)
-                };
-                p.maxLife = (float)GetRandomValue(28, 44) / 100.0f;
-                p.life = p.maxLife;
-                p.size = (float)GetRandomValue(20, 34) / 10.0f;
-                sprintDust.push_back(p);
-            }
-        }
-
-        if (player->GetLives() <= 0 && !isDying) {
-            TraceLog(LOG_WARNING, "GAME OVER! Player died.");
-            isDying = true;
-            deathFadeAlpha = 0.0f;
-            if (guard) guard->StopAudio();
-            gameCamera.AddTrauma(0.9f);
-            return;
-        }
-
-        Rectangle footCollider = player->GetFootCollider();
-
-        gameMap.UpdateTriggers(footCollider);
-        bool isInTriggerNow = !gameMap.GetCurrentTriggerMessage().empty();
-
-        if (tpPhase == TeleportPhase::NONE) {
-            if (isInTriggerNow && !wasInTrigger) {
-                Vector2 newPlayerPos;
-                if (gameMap.TryGetTeleportDestination(footCollider, player->GetPosition(), newPlayerPos)) {
-                    Vector2 enteredTriggerCenter;
-                    if (guard && gameMap.TryGetActiveTriggerCenter(footCollider, enteredTriggerCenter)) {
-                        guard->OnPlayerTeleported(enteredTriggerCenter);
-                    }
-
-                    pendingTeleportPos = newPlayerPos;
-                    tpPhase = TeleportPhase::FADING_OUT;
-                    wasInTrigger = true;
-                }
-            }
-            else if (!isInTriggerNow) {
-                wasInTrigger = false;
-            }
-        }
-
-        Vector2 desiredTarget = {
-            footCollider.x + footCollider.width / 2.0f,
-            footCollider.y + footCollider.height / 2.0f
-        };
-
-        // === МІКРО-ІНЕРЦІЯ ДЖЕРЕЛА СВІТЛА ===
-        if (!isLightPosInitialized) {
-            lightWorldPos = desiredTarget;
-            isLightPosInitialized = true;
+    for (size_t i = 0; i < sprintDust.size(); ) {
+        sprintDust[i].pos = Vector2Add(sprintDust[i].pos, Vector2Scale(sprintDust[i].vel, dt));
+        sprintDust[i].life -= dt;
+        if (sprintDust[i].life <= 0.0f) {
+            sprintDust.erase(sprintDust.begin() + i);
         }
         else {
-            const float stiffness = 175.0f;
-            const float damping = 18.0f;
-
-            Vector2 displacement = Vector2Subtract(desiredTarget, lightWorldPos);
-            Vector2 accel = Vector2Subtract(
-                Vector2Scale(displacement, stiffness),
-                Vector2Scale(lightVelocity, damping)
-            );
-
-            lightVelocity = Vector2Add(lightVelocity, Vector2Scale(accel, dt));
-            lightWorldPos = Vector2Add(lightWorldPos, Vector2Scale(lightVelocity, dt));
-
-            Vector2 offsetFromPlayer = Vector2Subtract(lightWorldPos, desiredTarget);
-            float offsetLen = Vector2Length(offsetFromPlayer);
-            const float maxLagDist = 7.0f;
-            if (offsetLen > maxLagDist) {
-                lightWorldPos = Vector2Add(desiredTarget, Vector2Scale(offsetFromPlayer, maxLagDist / offsetLen));
-            }
+            ++i;
         }
-        // ===================================
-
-        float proximity = 0.0f;
-        bool isChasing = false;
-        if (guard) {
-            Rectangle guardFoot = guard->GetFootCollider();
-            Vector2 guardCenter = {
-                guardFoot.x + guardFoot.width * 0.5f,
-                guardFoot.y + guardFoot.height * 0.5f
-            };
-            float distToGuard = Vector2Distance(desiredTarget, guardCenter);
-
-            const float minDist = 42.0f;
-            const float maxDist = 340.0f;
-            float normalizedDist = Clamp((distToGuard - minDist) / (maxDist - minDist), 0.0f, 1.0f);
-            float linearProx = 1.0f - normalizedDist;
-
-            proximity = linearProx * linearProx;
-            isChasing = (guard->GetCurrentState() == GuardState::CHASE);
-
-            if (isChasing) {
-                proximity = Clamp(proximity * 1.15f, 0.0f, 1.0f);
-            }
-        }
-
-        if (proximity > 0.05f) {
-            float proximityTrauma = Lerp(0.10f, 0.36f, proximity);
-            gameCamera.SetMinTrauma(proximityTrauma);
-        }
-
-        float staminaRatio = player->GetCurrentStamina() / player->GetMaxStamina();
-        bool effectiveMoving = !isMovementBlocked && player->IsMoving();
-        gameCamera.Update(desiredTarget, effectiveMoving, player->IsSprinting(), player->IsExhausted(), staminaRatio, dt);
-
-        // Динамічний зум для телепорту та спалаху виявлення
-        float targetZoom = baseCameraZoom;
-        if (tpPhase == TeleportPhase::FADING_OUT) {
-            targetZoom = baseCameraZoom + tpFadeAlpha * 0.38f;
-        }
-        else if (tpPhase == TeleportPhase::FADING_IN) {
-            targetZoom = baseCameraZoom + tpFadeAlpha * 0.25f;
-        }
-        else if (detectionFlashTimer > 0.0f) {
-            float flashWave = sinf((detectionFlashTimer / 0.42f) * PI);
-            targetZoom = baseCameraZoom + flashWave * 0.14f;
-        }
-        gameCamera.SetZoom(Lerp(gameCamera.GetZoom(), targetZoom, 1.0f - expf(-10.0f * dt)));
-
-        float flickerFreq = Lerp(8.5f, 22.0f, proximity);
-        float waveAmp = Lerp(0.010f, 0.065f, proximity);
-        float noiseAmp = Lerp(0.004f, 0.052f, proximity);
-
-        flickerTimer += dt * flickerFreq;
-        float rawNoise = ((float)GetRandomValue(-100, 100) / 100.0f) * noiseAmp;
-        float noiseBlend = 1.0f - expf(-25.0f * dt);
-        smoothedNoise = Lerp(smoothedNoise, rawNoise, noiseBlend);
-
-        if (lightDipTimer > 0.0f) {
-            lightDipTimer -= dt;
-            if (lightDipTimer < 0.0f) lightDipTimer = 0.0f;
-        }
-        else if (proximity > 0.25f) {
-            float triggerChancePerSec = proximity * 3.2f;
-            if (((float)GetRandomValue(0, 10000) / 10000.0f) < triggerChancePerSec * dt) {
-                lightDipDuration = (float)GetRandomValue(13, 19) / 100.0f;
-                lightDipTimer = lightDipDuration;
-                lightDipDepth = ((float)GetRandomValue(7, 15) / 100.0f) * proximity;
-            }
-        }
-
-        float activeDip = 0.0f;
-        if (lightDipTimer > 0.0f && lightDipDuration > 0.0f) {
-            float dipProgress = 1.0f - (lightDipTimer / lightDipDuration);
-            activeDip = sinf(dipProgress * PI) * lightDipDepth;
-        }
-
-        currentFlicker = 1.0f + (sinf(flickerTimer) * waveAmp) + smoothedNoise - activeDip;
-        currentFlicker = Clamp(currentFlicker, 0.65f, 1.08f);
-        SetShaderValue(lightShader, flickerLoc, &currentFlicker, SHADER_UNIFORM_FLOAT);
-
-        float dangerBlend = 1.0f - expf(-6.0f * dt);
-        smoothedDanger = Lerp(smoothedDanger, proximity, dangerBlend);
-        SetShaderValue(lightShader, dangerLoc, &smoothedDanger, SHADER_UNIFORM_FLOAT);
-
-        float targetExhaustion = 0.0f;
-        if (staminaRatio < 0.40f) {
-            targetExhaustion = Clamp((0.40f - staminaRatio) / 0.40f, 0.0f, 1.0f);
-        }
-        if (player->IsExhausted()) {
-            targetExhaustion = fmaxf(targetExhaustion, 0.78f);
-        }
-        float exhaustBlend = 1.0f - expf(-4.5f * dt);
-        smoothedExhaustion = Lerp(smoothedExhaustion, targetExhaustion, exhaustBlend);
-
-        float targetPanic = Clamp(smoothedDanger * (isChasing ? 1.15f : 0.75f) + damageImpulse * 0.85f, 0.0f, 1.0f);
-        float panicBlend = 1.0f - expf(-5.5f * dt);
-        smoothedPanic = Lerp(smoothedPanic, targetPanic, panicBlend);
-
-        SetShaderValue(lightShader, exhaustionLoc, &smoothedExhaustion, SHADER_UNIFORM_FLOAT);
-        SetShaderValue(lightShader, panicLoc, &smoothedPanic, SHADER_UNIFORM_FLOAT);
-        SetShaderValue(lightShader, timeLoc, &shaderTime, SHADER_UNIFORM_FLOAT);
-
-        Vector2 lightScreenPos = gameCamera.GetScreenPosition(lightWorldPos);
-
-        float pos[2] = {
-            lightScreenPos.x,
-            (float)virtualHeight - lightScreenPos.y
-        };
-
-        SetShaderValue(lightShader, playerPosLoc, pos, SHADER_UNIFORM_VEC2);
     }
+
+    if (!isMovementBlocked && player->IsMoving() && player->IsSprinting()) {
+        sprintDustTimer -= dt;
+        if (sprintDustTimer <= 0.0f) {
+            sprintDustTimer = 0.065f;
+            Rectangle pf = player->GetFootCollider();
+            SprintDustParticle p;
+            p.pos = {
+                pf.x + pf.width * 0.5f + (float)GetRandomValue(-5, 5),
+                pf.y + pf.height - 2.0f
+            };
+            p.vel = {
+                (float)GetRandomValue(-14, 14),
+                (float)GetRandomValue(-18, -6)
+            };
+            p.maxLife = (float)GetRandomValue(28, 44) / 100.0f;
+            p.life = p.maxLife;
+            p.size = (float)GetRandomValue(20, 34) / 10.0f;
+            sprintDust.push_back(p);
+        }
+    }
+
+    if (player->GetLives() <= 0 && !isDying) {
+        TraceLog(LOG_WARNING, "GAME OVER! Player died.");
+        isDying = true;
+        deathTimer = 0.0f;
+        Rectangle foot = player->GetFootCollider();
+        deathFocusPos = { foot.x + foot.width * 0.5f, foot.y + foot.height * 0.5f };
+        if (guard) guard->StopAudio();
+        gameCamera.AddTrauma(0.95f);
+        return;
+    }
+
+    Rectangle footCollider = player->GetFootCollider();
+
+    gameMap.UpdateTriggers(footCollider);
+    bool isInTriggerNow = !gameMap.GetCurrentTriggerMessage().empty();
+
+    if (tpPhase == TeleportPhase::NONE) {
+        if (isInTriggerNow && !wasInTrigger) {
+            Vector2 newPlayerPos;
+            if (gameMap.TryGetTeleportDestination(footCollider, player->GetPosition(), newPlayerPos)) {
+                Vector2 enteredTriggerCenter;
+                if (guard && gameMap.TryGetActiveTriggerCenter(footCollider, enteredTriggerCenter)) {
+                    guard->OnPlayerTeleported(enteredTriggerCenter);
+                }
+
+                pendingTeleportPos = newPlayerPos;
+                tpPhase = TeleportPhase::FADING_OUT;
+                wasInTrigger = true;
+            }
+        }
+        else if (!isInTriggerNow) {
+            wasInTrigger = false;
+        }
+    }
+
+    Vector2 desiredTarget = {
+        footCollider.x + footCollider.width / 2.0f,
+        footCollider.y + footCollider.height / 2.0f
+    };
+
+    if (!isLightPosInitialized) {
+        lightWorldPos = desiredTarget;
+        isLightPosInitialized = true;
+    }
+    else {
+        const float stiffness = 175.0f;
+        const float damping = 18.0f;
+
+        Vector2 displacement = Vector2Subtract(desiredTarget, lightWorldPos);
+        Vector2 accel = Vector2Subtract(
+            Vector2Scale(displacement, stiffness),
+            Vector2Scale(lightVelocity, damping)
+        );
+
+        lightVelocity = Vector2Add(lightVelocity, Vector2Scale(accel, dt));
+        lightWorldPos = Vector2Add(lightWorldPos, Vector2Scale(lightVelocity, dt));
+
+        Vector2 offsetFromPlayer = Vector2Subtract(lightWorldPos, desiredTarget);
+        float offsetLen = Vector2Length(offsetFromPlayer);
+        const float maxLagDist = 7.0f;
+        if (offsetLen > maxLagDist) {
+            lightWorldPos = Vector2Add(desiredTarget, Vector2Scale(offsetFromPlayer, maxLagDist / offsetLen));
+        }
+    }
+
+    float proximity = 0.0f;
+    bool isChasing = false;
+    if (guard) {
+        Rectangle guardFoot = guard->GetFootCollider();
+        Vector2 guardCenter = {
+            guardFoot.x + guardFoot.width * 0.5f,
+            guardFoot.y + guardFoot.height * 0.5f
+        };
+        float distToGuard = Vector2Distance(desiredTarget, guardCenter);
+
+        const float minDist = 42.0f;
+        const float maxDist = 340.0f;
+        float normalizedDist = Clamp((distToGuard - minDist) / (maxDist - minDist), 0.0f, 1.0f);
+        float linearProx = 1.0f - normalizedDist;
+
+        proximity = linearProx * linearProx;
+        isChasing = (guard->GetCurrentState() == GuardState::CHASE);
+
+        if (isChasing) {
+            proximity = Clamp(proximity * 1.15f, 0.0f, 1.0f);
+        }
+    }
+
+    if (proximity > 0.05f) {
+        gameCamera.SetMinTrauma(Lerp(0.10f, 0.36f, proximity));
+    }
+
+    float staminaRatio = player->GetCurrentStamina() / player->GetMaxStamina();
+    bool effectiveMoving = !isMovementBlocked && player->IsMoving();
+    gameCamera.Update(desiredTarget, effectiveMoving, player->IsSprinting(), player->IsExhausted(), staminaRatio, dt);
+
+    float targetZoom = baseCameraZoom;
+    if (tpPhase == TeleportPhase::FADING_OUT) {
+        targetZoom = baseCameraZoom + tpFadeAlpha * 0.38f;
+    }
+    else if (tpPhase == TeleportPhase::FADING_IN) {
+        targetZoom = baseCameraZoom + tpFadeAlpha * 0.25f;
+    }
+    else if (detectionFlashTimer > 0.0f) {
+        float flashWave = sinf((detectionFlashTimer / 0.42f) * PI);
+        targetZoom = baseCameraZoom + flashWave * 0.14f;
+    }
+    gameCamera.SetZoom(Lerp(gameCamera.GetZoom(), targetZoom, 1.0f - expf(-10.0f * dt)));
+
+    float flickerFreq = Lerp(8.5f, 22.0f, proximity);
+    float waveAmp = Lerp(0.010f, 0.065f, proximity);
+    float noiseAmp = Lerp(0.004f, 0.052f, proximity);
+
+    flickerTimer += dt * flickerFreq;
+    float rawNoise = ((float)GetRandomValue(-100, 100) / 100.0f) * noiseAmp;
+    float noiseBlend = 1.0f - expf(-25.0f * dt);
+    smoothedNoise = Lerp(smoothedNoise, rawNoise, noiseBlend);
+
+    if (lightDipTimer > 0.0f) {
+        lightDipTimer -= dt;
+        if (lightDipTimer < 0.0f) lightDipTimer = 0.0f;
+    }
+    else if (proximity > 0.25f) {
+        float triggerChancePerSec = proximity * 3.2f;
+        if (((float)GetRandomValue(0, 10000) / 10000.0f) < triggerChancePerSec * dt) {
+            lightDipDuration = (float)GetRandomValue(13, 19) / 100.0f;
+            lightDipTimer = lightDipDuration;
+            lightDipDepth = ((float)GetRandomValue(7, 15) / 100.0f) * proximity;
+        }
+    }
+
+    float activeDip = 0.0f;
+    if (lightDipTimer > 0.0f && lightDipDuration > 0.0f) {
+        float dipProgress = 1.0f - (lightDipTimer / lightDipDuration);
+        activeDip = sinf(dipProgress * PI) * lightDipDepth;
+    }
+
+    currentFlicker = 1.0f + (sinf(flickerTimer) * waveAmp) + smoothedNoise - activeDip;
+    currentFlicker = Clamp(currentFlicker, 0.65f, 1.08f);
+    SetShaderValue(lightShader, flickerLoc, &currentFlicker, SHADER_UNIFORM_FLOAT);
+
+    smoothedDanger = Lerp(smoothedDanger, proximity, 1.0f - expf(-6.0f * dt));
+    SetShaderValue(lightShader, dangerLoc, &smoothedDanger, SHADER_UNIFORM_FLOAT);
+
+    float targetExhaustion = 0.0f;
+    if (staminaRatio < 0.40f) {
+        targetExhaustion = Clamp((0.40f - staminaRatio) / 0.40f, 0.0f, 1.0f);
+    }
+    if (player->IsExhausted()) {
+        targetExhaustion = fmaxf(targetExhaustion, 0.78f);
+    }
+    smoothedExhaustion = Lerp(smoothedExhaustion, targetExhaustion, 1.0f - expf(-4.5f * dt));
+
+    float targetPanic = Clamp(smoothedDanger * (isChasing ? 1.15f : 0.75f) + damageImpulse * 0.85f, 0.0f, 1.0f);
+    smoothedPanic = Lerp(smoothedPanic, targetPanic, 1.0f - expf(-5.5f * dt));
+
+    SetShaderValue(lightShader, exhaustionLoc, &smoothedExhaustion, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(lightShader, panicLoc, &smoothedPanic, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(lightShader, timeLoc, &shaderTime, SHADER_UNIFORM_FLOAT);
+
+    Vector2 lightScreenPos = gameCamera.GetScreenPosition(lightWorldPos);
+    float pos[2] = { lightScreenPos.x, (float)virtualHeight - lightScreenPos.y };
+    SetShaderValue(lightShader, playerPosLoc, pos, SHADER_UNIFORM_VEC2);
 }
 
 void GameplayState::Draw() {
@@ -563,7 +498,6 @@ void GameplayState::Draw() {
     BeginMode2D(gameCamera.GetCamera());
     renderSystem.RenderWorld(gameMap, player.get(), guard.get());
 
-    // Пил з-під ніг під час спринту
     for (const auto& p : sprintDust) {
         float ratio = Clamp(p.life / p.maxLife, 0.0f, 1.0f);
         float radius = p.size * (1.55f - ratio * 0.55f);
@@ -576,7 +510,6 @@ void GameplayState::Draw() {
         if (guard) guard->DrawDebug();
     }
     EndMode2D();
-
     EndTextureMode();
 
     float windowWidth = (float)GetScreenWidth();
@@ -588,7 +521,6 @@ void GameplayState::Draw() {
 
     float drawWidth = (float)virtualWidth * scale;
     float drawHeight = (float)virtualHeight * scale;
-
     float destX = (windowWidth - drawWidth) * 0.5f;
     float destY = (windowHeight - drawHeight) * 0.5f;
 
@@ -596,252 +528,42 @@ void GameplayState::Draw() {
 
     Rectangle sourceRec = { 0.0f, 0.0f, (float)targetTexture.texture.width, (float)-targetTexture.texture.height };
     Rectangle destRec = { destX, destY, drawWidth, drawHeight };
-    Vector2 origin = { 0.0f, 0.0f };
 
     BeginShaderMode(lightShader);
-    DrawTexturePro(targetTexture.texture, sourceRec, destRec, origin, 0.0f, WHITE);
+    DrawTexturePro(targetTexture.texture, sourceRec, destRec, { 0.0f, 0.0f }, 0.0f, WHITE);
     EndShaderMode();
 
-    if (player) {
-        float staminaRatio = player->GetCurrentStamina() / player->GetMaxStamina();
-        if (staminaRatio < 0.0f) staminaRatio = 0.0f;
-        if (staminaRatio > 1.0f) staminaRatio = 1.0f;
+    if (player && !isDying) {
+        GameplayHudData hudData;
+        hudData.lives = player->GetLives();
+        hudData.currentStamina = player->GetCurrentStamina();
+        hudData.maxStamina = player->GetMaxStamina();
+        hudData.isExhausted = player->IsExhausted();
+        hudData.shaderTime = shaderTime;
+        hudData.cardFlickerTimer = cardFlickerTimer;
+        hudData.currentCamNumber = currentCamNumber;
 
-        int staminaFrame = (int)std::round(staminaRatio * 10.0f);
-        std::string staminaTexName = "stamina_" + std::to_string(staminaFrame);
-        Texture2D staminaTex = AssetManager::Instance().GetTexture(staminaTexName);
-
-        if (staminaTex.id > 0) {
-            Vector2 position = { 20.0f, 400.0f };
-            Color staminaTint = WHITE;
-            if (player->IsExhausted()) {
-                float exhaustPulse = 0.5f + 0.5f * sinf(shaderTime * 11.0f);
-                staminaTint = ColorLerp(Color{ 255, 110, 110, 255 }, Color{ 230, 35, 45, 255 }, exhaustPulse);
-                position.x += sinf(shaderTime * 48.0f) * 1.2f;
-            }
-            DrawTextureEx(staminaTex, position, 270.0f, 2.5f, staminaTint);
-        }
-
-        Texture2D cardTex = AssetManager::Instance().GetTexture("card_lives");
-        if (cardTex.id > 0) {
-            const float frameWidth = 32.0f;
-            const float frameHeight = 32.0f;
-
-            int frameIndex = 0;
-            if (player->GetLives() == 2) frameIndex = 1;
-            else if (player->GetLives() == 1) frameIndex = 2;
-            else if (player->GetLives() <= 0) frameIndex = 3;
-
-            Rectangle cardSourceRec = { (float)frameIndex * frameWidth, 0.0f, frameWidth, frameHeight };
-            float cardScale = 4.5f;
-            float floatY = sinf(shaderTime * 2.4f) * 3.5f;
-            float tiltAngle = sinf(shaderTime * 1.7f) * 2.5f;
-
-            Vector2 cardCenter = {
-                55.0f + (frameWidth * cardScale) * 0.5f,
-                105.0f + (frameHeight * cardScale) * 0.5f + floatY
-            };
-
-            Color cardColor = WHITE;
-            Vector2 shakeOffset = { 0.0f, 0.0f };
-
-            if (player->GetLives() == 1) {
-                float dangerBeat = 0.5f + 0.5f * sinf(shaderTime * 7.5f);
-                DrawCircleV(cardCenter, 68.0f, ColorAlpha(RED, 0.14f * dangerBeat));
-                cardColor = ColorLerp(WHITE, Color{ 255, 145, 145, 255 }, dangerBeat * 0.65f);
-            }
-
-            if (cardFlickerTimer > 0.0f) {
-                float alpha = (sinf(cardFlickerTimer * 40.0f) > 0.0f) ? 0.3f : 1.0f;
-                cardColor = ColorAlpha(RED, alpha);
-                shakeOffset.x = (float)GetRandomValue(-3, 3);
-                shakeOffset.y = (float)GetRandomValue(-3, 3);
-                tiltAngle += (float)GetRandomValue(-8, 8);
-            }
-
-            Rectangle cardDestRec = {
-                cardCenter.x + shakeOffset.x,
-                cardCenter.y + shakeOffset.y,
-                frameWidth * cardScale,
-                frameHeight * cardScale
-            };
-            Vector2 cardOrigin = { cardDestRec.width * 0.5f, cardDestRec.height * 0.5f };
-
-            DrawTexturePro(cardTex, cardSourceRec, cardDestRec, cardOrigin, tiltAngle, cardColor);
-        }
+        hudUI.DrawHud(hudData);
 
         if (showDebugOverlay) {
             Rectangle foot = player->GetFootCollider();
-            DrawRectangle(10, 10, 350, 80, Fade(BLACK, 0.8f));
-            DrawRectangleLines(10, 10, 350, 80, GREEN);
+            float dbgY = windowHeight - 178.0f;
+            DrawRectangle(28, (int)dbgY, 360, 82, Fade(BLACK, 0.85f));
+            DrawRectangleLines(28, (int)dbgY, 360, 82, GREEN);
 
-            DrawFPS(20, 20);
-            DrawText(TextFormat("Player Pos: X: %.1f | Y: %.1f", foot.x, foot.y), 20, 45, 18, GREEN);
-            DrawText(TextFormat("Tile Coords: X: %d | Y: %d", (int)(foot.x / 32.0f), (int)(foot.y / 32.0f)), 20, 65, 18, YELLOW);
+            DrawFPS(38, (int)dbgY + 10);
+            DrawText(TextFormat("Player Pos: X: %.1f | Y: %.1f", foot.x, foot.y), 38, (int)dbgY + 34, 18, GREEN);
+            DrawText(TextFormat("Tile Coords: X: %d | Y: %d", (int)(foot.x / 32.0f), (int)(foot.y / 32.0f)), 38, (int)dbgY + 56, 18, YELLOW);
         }
     }
 
-    if (tpFadeAlpha > 0.0f) {
-        float sw = (float)GetScreenWidth();
-        float sh = (float)GetScreenHeight();
-        DrawRectangle(0, 0, (int)sw, (int)sh, Fade(BLACK, tpFadeAlpha));
-
-        // Горизонтальні смуги перешкод при перемиканні камер казино
-        for (int i = 0; i < 6; ++i) {
-            int barY = GetRandomValue(0, (int)sh);
-            int barH = GetRandomValue(2, 6);
-            DrawRectangle(0, barY, (int)sw, barH, ColorAlpha(RAYWHITE, tpFadeAlpha * 0.16f));
-        }
-
-        const char* switchText = TextFormat("SIGNAL SWITCH // CAM-0%d", currentCamNumber);
-        int fontSize = 22;
-        int tw = MeasureText(switchText, fontSize);
-        DrawText(
-            switchText,
-            (int)((sw - tw) * 0.5f) + GetRandomValue(-2, 2),
-            (int)(sh * 0.5f - fontSize * 0.5f),
-            fontSize,
-            ColorAlpha(GOLD, tpFadeAlpha * 0.9f)
-        );
-    }
+    hudUI.DrawTeleportOverlay(tpFadeAlpha, currentCamNumber);
 
     if (isDying) {
-        float clampedAlpha = (deathFadeAlpha > 1.0f) ? 1.0f : deathFadeAlpha;
-        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(MAROON, clampedAlpha * 0.45f));
-        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, clampedAlpha));
+        hudUI.DrawDeathOverlay(deathTimer, deathDuration);
     }
 
     if (isPaused) {
-        DrawPauseMenu();
-        CustomCursor::Draw(exitToMenuButton.isHovered);
-    }
-}
-
-void GameplayState::DrawPauseMenu() {
-    float screenW = (float)GetScreenWidth();
-    float screenH = (float)GetScreenHeight();
-
-    // 1. Темне затемнення + сканлайни режиму заморозки камери спостереження
-    DrawRectangle(0, 0, (int)screenW, (int)screenH, Fade(BLACK, 0.78f));
-    for (int y = 0; y < (int)screenH; y += 4) {
-        DrawRectangle(0, y, (int)screenW, 1, Fade(WHITE, 0.03f));
-    }
-
-    // 2. Кутові візири CCTV
-    float margin = 26.0f;
-    float arm = 26.0f;
-    Color hudCol = ColorAlpha(GOLD, 0.35f);
-    DrawLineEx({ margin, margin }, { margin + arm, margin }, 1.5f, hudCol);
-    DrawLineEx({ margin, margin }, { margin, margin + arm }, 1.5f, hudCol);
-    DrawLineEx({ screenW - margin - arm, margin }, { screenW - margin, margin }, 1.5f, hudCol);
-    DrawLineEx({ screenW - margin, margin }, { screenW - margin, margin + arm }, 1.5f, hudCol);
-    DrawLineEx({ margin, screenH - margin }, { margin + arm, screenH - margin }, 1.5f, hudCol);
-    DrawLineEx({ margin, screenH - margin - arm }, { margin, screenH - margin }, 1.5f, hudCol);
-    DrawLineEx({ screenW - margin - arm, screenH - margin }, { screenW - margin, screenH - margin }, 1.5f, hudCol);
-    DrawLineEx({ screenW - margin, screenH - margin - arm }, { screenW - margin, screenH - margin }, 1.5f, hudCol);
-
-    if (fmodf(pauseAnimTime, 1.2f) < 0.75f) {
-        DrawRectangle((int)(margin + 14.0f), (int)(margin + 14.0f), 8, 8, GOLD);
-    }
-    DrawText("PAUSE // CAM-04 FREEZE", (int)(margin + 30.0f), (int)(margin + 11.0f), 15, ColorAlpha(RAYWHITE, 0.7f));
-
-    // 3. Неоновий заголовок PAUSED
-    const char* pauseTitle = "PAUSED";
-    int fontSize = 58;
-    int textWidth = MeasureText(pauseTitle, fontSize);
-    int titleX = (int)((screenW - textWidth) * 0.5f);
-    int titleY = (int)(screenH * 0.25f);
-    float glow = 0.85f + 0.15f * sinf(pauseAnimTime * 3.0f);
-
-    DrawText(pauseTitle, titleX - 2, titleY + 2, fontSize, ColorAlpha(RED, 0.3f * glow));
-    DrawText(pauseTitle, titleX - 1, titleY, fontSize, ColorAlpha(GOLD, 0.4f * glow));
-    DrawText(pauseTitle, titleX + 1, titleY, fontSize, ColorAlpha(GOLD, 0.4f * glow));
-    DrawText(pauseTitle, titleX, titleY, fontSize, Color{ 255, 226, 110, 255 });
-
-    float centerX = screenW * 0.5f;
-    float lineY = (float)(titleY + fontSize + 12);
-    DrawLineEx({ centerX - 120.0f, lineY }, { centerX - 12.0f, lineY }, 1.5f, ColorAlpha(GOLD, 0.45f));
-    DrawLineEx({ centerX + 12.0f, lineY }, { centerX + 120.0f, lineY }, 1.5f, ColorAlpha(GOLD, 0.45f));
-    DrawPoly({ centerX, lineY }, 4, 5.0f, 0.0f, GOLD);
-
-    // 4. Кнопки у стилі Art Deco
-    DrawPauseButton(resumeButton);
-    DrawPauseButton(exitToMenuButton);
-}
-
-void GameplayState::DrawPauseButton(const PauseButton& btn) {
-    float p = btn.hoverProgress;
-    float expandX = p * 12.0f;
-    float expandY = p * 2.0f;
-
-    float jitterX = (btn.isDanger && p > 0.05f) ? sinf(pauseAnimTime * 56.0f) * 1.3f * p : 0.0f;
-    float jitterY = (btn.isDanger && p > 0.05f) ? cosf(pauseAnimTime * 45.0f) * 0.8f * p : 0.0f;
-
-    Rectangle rect = {
-        btn.bounds.x - expandX + jitterX,
-        btn.bounds.y - expandY + jitterY,
-        btn.bounds.width + expandX * 2.0f,
-        btn.bounds.height + expandY * 2.0f
-    };
-
-    Color accentColor = btn.isDanger ? Color{ 225, 48, 56, 255 } : GOLD;
-    Color darkFillBase = btn.isDanger ? Color{ 16, 10, 12, 225 } : Color{ 12, 13, 16, 225 };
-    Color hoverTint = btn.isDanger ? ColorAlpha(MAROON, 0.36f * p) : ColorAlpha(GOLD, 0.16f * p);
-
-    DrawRectangle((int)rect.x + 4, (int)rect.y + 5, (int)rect.width, (int)rect.height, Fade(BLACK, 0.7f));
-    if (p > 0.01f) {
-        Rectangle glowRect = { rect.x - 4.0f, rect.y - 4.0f, rect.width + 8.0f, rect.height + 8.0f };
-        DrawRectangleLinesEx(glowRect, 2.0f, ColorAlpha(accentColor, 0.25f * p));
-    }
-
-    DrawRectangleRec(rect, darkFillBase);
-    if (p > 0.01f) {
-        DrawRectangleRec(rect, hoverTint);
-    }
-
-    if (p > 0.02f) {
-        BeginScissorMode((int)rect.x, (int)rect.y, (int)rect.width, (int)rect.height);
-        float sweepPhase = fmodf(pauseAnimTime * 1.35f, 1.8f) - 0.4f;
-        float sweepX = rect.x + sweepPhase * rect.width;
-        DrawLineEx(
-            { sweepX - 18.0f, rect.y + rect.height },
-            { sweepX + 18.0f, rect.y },
-            14.0f,
-            ColorAlpha(accentColor, 0.14f * p)
-        );
-        EndScissorMode();
-    }
-
-    Color outerBorder = ColorLerp(Color{ 95, 95, 102, 200 }, accentColor, p);
-    Color innerBorder = ColorAlpha(accentColor, 0.18f + 0.45f * p);
-
-    DrawRectangleLinesEx(rect, 2.0f, outerBorder);
-    Rectangle innerRect = { rect.x + 5.0f, rect.y + 5.0f, rect.width - 10.0f, rect.height - 10.0f };
-    DrawRectangleLinesEx(innerRect, 1.0f, innerBorder);
-
-    float cornerR = 3.0f + p * 1.0f;
-    Color cornerCol = ColorLerp(GRAY, accentColor, p);
-    DrawPoly({ innerRect.x, innerRect.y }, 4, cornerR, 0.0f, cornerCol);
-    DrawPoly({ innerRect.x + innerRect.width, innerRect.y }, 4, cornerR, 0.0f, cornerCol);
-    DrawPoly({ innerRect.x, innerRect.y + innerRect.height }, 4, cornerR, 0.0f, cornerCol);
-    DrawPoly({ innerRect.x + innerRect.width, innerRect.y + innerRect.height }, 4, cornerR, 0.0f, cornerCol);
-
-    int fontSize = 24;
-    int textWidth = MeasureText(btn.text.c_str(), fontSize);
-    float textX = rect.x + (rect.width - textWidth) * 0.5f;
-    float textY = rect.y + (rect.height - fontSize) * 0.5f;
-
-    Color textColor = ColorLerp(LIGHTGRAY, WHITE, p);
-    DrawText(btn.text.c_str(), (int)textX + 1, (int)textY + 2, fontSize, Fade(BLACK, 0.8f));
-    DrawText(btn.text.c_str(), (int)textX, (int)textY, fontSize, textColor);
-
-    if (p > 0.05f) {
-        float diamondOffset = 18.0f + p * 10.0f;
-        float diamondRadius = 4.5f * p;
-        float midY = rect.y + rect.height * 0.5f;
-        Color sideDiamondCol = ColorAlpha(accentColor, p);
-
-        DrawPoly({ textX - diamondOffset, midY }, 4, diamondRadius, 0.0f, sideDiamondCol);
-        DrawPoly({ textX + textWidth + diamondOffset, midY }, 4, diamondRadius, 0.0f, sideDiamondCol);
+        hudUI.DrawPauseMenu();
     }
 }
