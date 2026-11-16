@@ -43,3 +43,7 @@ bool InputManager::IsSprintPressed() {
 bool InputManager::IsDebugTogglePressed() {
     return IsKeyPressed(KEY_F1);
 }
+
+bool InputManager::IsPausePressed() {
+    return IsKeyPressed(KEY_ESCAPE);
+}

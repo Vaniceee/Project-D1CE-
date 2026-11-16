@@ -17,4 +17,5 @@ public:
     static bool IsInteractPressed();
     static bool IsSprintPressed();
     static bool IsDebugTogglePressed();
+    static bool IsPausePressed();
 };

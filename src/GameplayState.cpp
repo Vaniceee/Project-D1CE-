@@ -1,4 +1,7 @@
 #include "GameplayState.h"
+#include "MainMenuState.h"
+#include "GameOverState.h"
+#include "GameManager.h"
 #include "InputManager.h"
 
 void GameplayState::Init() {
@@ -17,7 +20,7 @@ void GameplayState::Init() {
     SetShaderValue(lightShader, resolutionLoc, res, SHADER_UNIFORM_VEC2);
     SetShaderValue(lightShader, radiusLoc, &lightRadius, SHADER_UNIFORM_FLOAT);
 
-    float ambient[4] = { 0.04f, 0.04f, 0.08f, 1.0f }; // Тон темряви навколо
+    float ambient[4] = { 0.04f, 0.04f, 0.08f, 1.0f };
     SetShaderValue(lightShader, ambientLoc, ambient, SHADER_UNIFORM_VEC4);
     // ============================================
 
@@ -52,13 +55,29 @@ void GameplayState::Init() {
     // 2. Спавн охоронця з мапи
     const auto& guardSpawns = gameMap.GetGuardSpawns();
     Vector2 guardPos = !guardSpawns.empty() ? guardSpawns[0] : Vector2{ 2200.0f, 2464.0f };
-    guard = std::make_unique<Guard>(guardPos, 119.0f);
+    guard = std::make_unique<Guard>(guardPos, 70.0f);
     guard->InitPathfinding(gameMap);
 
     // 3. Ініціалізація камери
     gameCamera.Init(startPos, virtualWidth, virtualHeight, 1.8f);
 
-    // Скидання станів телепортації
+    // 4. Ініціалізація кнопок меню паузи
+    float screenW = (float)GetScreenWidth();
+    float screenH = (float)GetScreenHeight();
+    float btnWidth = 300.0f;
+    float btnHeight = 60.0f;
+    float btnX = (screenW - btnWidth) * 0.5f;
+
+    resumeButton.bounds = { btnX, (screenH * 0.5f) - 40.0f, btnWidth, btnHeight };
+    resumeButton.text = "RESUME";
+
+    exitToMenuButton.bounds = { btnX, (screenH * 0.5f) + 40.0f, btnWidth, btnHeight };
+    exitToMenuButton.text = "MAIN MENU";
+
+    // Скидання станів
+    isPaused = false;
+    isDying = false;
+    deathFadeAlpha = 0.0f;
     tpPhase = TeleportPhase::NONE;
     tpFadeAlpha = 0.0f;
     waitForKeysRelease = false;
@@ -76,6 +95,7 @@ void GameplayState::Init() {
 }
 
 void GameplayState::Cleanup() {
+    StopMusicStream(bgMusic);
     gameMap.Unload();
 
     if (lightShader.id != 0) {
@@ -92,19 +112,66 @@ void GameplayState::Cleanup() {
     AssetManager::Instance().UnloadAll();
 }
 
+void GameplayState::UpdatePauseMenu() {
+    Vector2 mousePos = GetMousePosition();
+
+    resumeButton.isHovered = CheckCollisionPointRec(mousePos, resumeButton.bounds);
+    exitToMenuButton.isHovered = CheckCollisionPointRec(mousePos, exitToMenuButton.bounds);
+
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        if (resumeButton.isHovered) {
+            isPaused = false;
+            ResumeMusicStream(bgMusic);
+        }
+        else if (exitToMenuButton.isHovered) {
+            GameManager::Instance().ChangeState(new MainMenuState());
+            return;
+        }
+    }
+}
+
 void GameplayState::Update() {
+    float dt = GetFrameTime();
+
+    // 1. Обробка смерті гравця та перехід у GameOverState
+    if (isDying) {
+        UpdateMusicStream(bgMusic);
+        deathFadeAlpha += deathFadeSpeed * dt;
+        SetMusicVolume(bgMusic, 0.046f * (1.0f - (deathFadeAlpha > 1.0f ? 1.0f : deathFadeAlpha)));
+
+        if (deathFadeAlpha >= 1.0f) {
+            GameManager::Instance().ChangeState(new GameOverState());
+            return;
+        }
+        return;
+    }
+
+    // 2. Перемикання паузи по клавіші ESC (якщо не триває телепорт)
+    if (InputManager::IsPausePressed() && tpPhase == TeleportPhase::NONE) {
+        isPaused = !isPaused;
+        if (isPaused) {
+            PauseMusicStream(bgMusic);
+        }
+        else {
+            ResumeMusicStream(bgMusic);
+        }
+    }
+
+    if (isPaused) {
+        UpdatePauseMenu();
+        return;
+    }
+
     if (InputManager::IsDebugTogglePressed()) {
         showDebugOverlay = !showDebugOverlay;
     }
 
     if (player) {
         UpdateMusicStream(bgMusic);
-        float dt = GetFrameTime();
 
         Vector2 currentInputDir = InputManager::GetMovementDirection();
         bool anyMoveKeyPressed = (currentInputDir.x != 0.0f || currentInputDir.y != 0.0f);
 
-        // Якщо чекаємо повного відпускання клавіш після телепорту (захист і від прямого, і від діагонального руху)
         if (waitForKeysRelease && !anyMoveKeyPressed) {
             waitForKeysRelease = false;
         }
@@ -114,7 +181,6 @@ void GameplayState::Update() {
             tpFadeAlpha += tpFadeSpeed * dt;
             if (tpFadeAlpha >= 1.0f) {
                 tpFadeAlpha = 1.0f;
-                // Переносимо гравця в нову локацію у момент повної темряви
                 player->SetPosition(pendingTeleportPos);
                 tpPhase = TeleportPhase::FADING_IN;
             }
@@ -124,11 +190,10 @@ void GameplayState::Update() {
             if (tpFadeAlpha <= 0.0f) {
                 tpFadeAlpha = 0.0f;
                 tpPhase = TeleportPhase::NONE;
-                waitForKeysRelease = true; // Після освітлення чекаємо відпускання затиснутих клавіш
+                waitForKeysRelease = true;
             }
         }
 
-        // Гравець рухається ТІЛЬКИ коли немає переходу і всі клавіші після минулого ТП були відпущені
         bool isMovementBlocked = (tpPhase != TeleportPhase::NONE) || waitForKeysRelease;
         if (!isMovementBlocked) {
             player->Update(gameMap);
@@ -152,14 +217,18 @@ void GameplayState::Update() {
             guard->Update(*player, gameMap, dt);
         }
 
-        if (player->GetLives() <= 0 && !isGameOverProcessed) {
+        // Перевірка смерті гравця (коли ХП <= 0)
+        if (player->GetLives() <= 0 && !isDying) {
             TraceLog(LOG_WARNING, "GAME OVER! Player died.");
-            isGameOverProcessed = true;
+            isDying = true;
+            deathFadeAlpha = 0.0f;
+            gameCamera.AddTrauma(0.9f);
+            return;
         }
 
         Rectangle footCollider = player->GetFootCollider();
 
-        // 1. Оновлення тригерів та запуск переходу при вході в двері
+        // Оновлення тригерів та запуск переходу при вході в двері
         gameMap.UpdateTriggers(footCollider);
         bool isInTriggerNow = !gameMap.GetCurrentTriggerMessage().empty();
 
@@ -182,7 +251,7 @@ void GameplayState::Update() {
             }
         }
 
-        // 2. Оновлення камери (під час FADING_OUT/IN камера плавно перелітає до нової позиції)
+        // Оновлення камери
         Vector2 desiredTarget = {
             footCollider.x + footCollider.width / 2.0f,
             footCollider.y + footCollider.height / 2.0f
@@ -191,7 +260,7 @@ void GameplayState::Update() {
         bool effectiveMoving = !isMovementBlocked && player->IsMoving();
         gameCamera.Update(desiredTarget, effectiveMoving, player->IsSprinting(), player->IsExhausted(), staminaRatio, dt);
 
-        // 3. Мерехтіння та передача позиції гравця в шейдер
+        // Мерехтіння та передача позиції гравця в шейдер
         flickerTimer += dt;
         float noise = (float)GetRandomValue(-10, 10) / 900.0f;
         currentFlicker = 1.0f + (sinf(flickerTimer * 10.0f) * 0.025f) + noise;
@@ -209,7 +278,7 @@ void GameplayState::Update() {
 }
 
 void GameplayState::Draw() {
-    // 1. РЕНДЕРИНГ ІГРОВОГО СВІТУ (через RenderSystem з Y-сортуванням)
+    // 1. РЕНДЕРИНГ ІГРОВОГО СВІТУ
     BeginTextureMode(targetTexture);
     ClearBackground(BLACK);
 
@@ -222,13 +291,12 @@ void GameplayState::Draw() {
 
     EndTextureMode();
 
-    // 2. ЛОГІКА МАСШТАБУВАННЯ
+    // 2. МАСШТАБУВАННЯ НА ЕКРАН
     float windowWidth = (float)GetScreenWidth();
     float windowHeight = (float)GetScreenHeight();
 
     float scaleX = windowWidth / (float)virtualWidth;
     float scaleY = windowHeight / (float)virtualHeight;
-
     float scale = (scaleX < scaleY) ? scaleX : scaleY;
 
     float drawWidth = (float)virtualWidth * scale;
@@ -247,52 +315,32 @@ void GameplayState::Draw() {
     DrawTexturePro(targetTexture.texture, sourceRec, destRec, origin, 0.0f, WHITE);
     EndShaderMode();
 
-    // -------------------------------------------------------------------------
-    // ВІДОБРАЖЕННЯ ІНТЕРФЕЙСУ
-    // -------------------------------------------------------------------------
+    // 3. ІНТЕРФЕЙС ГРАВЦЯ
     if (player) {
-        // --- ШКАЛА СТАМІНИ ---
         float staminaRatio = player->GetCurrentStamina() / player->GetMaxStamina();
         if (staminaRatio < 0.0f) staminaRatio = 0.0f;
         if (staminaRatio > 1.0f) staminaRatio = 1.0f;
 
         int staminaFrame = (int)std::round(staminaRatio * 10.0f);
-
         std::string staminaTexName = "stamina_" + std::to_string(staminaFrame);
         Texture2D staminaTex = AssetManager::Instance().GetTexture(staminaTexName);
 
         if (staminaTex.id > 0) {
             Vector2 position = { 20.0f, 400.0f };
-            float scaleTex = 2.5f;
-            float rotation = 270.0f;
-
-            DrawTextureEx(staminaTex, position, rotation, scaleTex, WHITE);
+            DrawTextureEx(staminaTex, position, 270.0f, 2.5f, WHITE);
         }
 
-        // --- ВІДОБРАЖЕННЯ КАРТИ ЖИТТІВ ---
         Texture2D cardTex = AssetManager::Instance().GetTexture("card_lives");
         if (cardTex.id > 0) {
             const float frameWidth = 32.0f;
             const float frameHeight = 32.0f;
 
             int frameIndex = 0;
-            if (player->GetLives() == 2) {
-                frameIndex = 1;
-            }
-            else if (player->GetLives() == 1) {
-                frameIndex = 2;
-            }
-            else if (player->GetLives() <= 0) {
-                frameIndex = 3;
-            }
+            if (player->GetLives() == 2) frameIndex = 1;
+            else if (player->GetLives() == 1) frameIndex = 2;
+            else if (player->GetLives() <= 0) frameIndex = 3;
 
-            Rectangle cardSourceRec = {
-                (float)frameIndex * frameWidth,
-                0.0f,
-                frameWidth,
-                frameHeight
-            };
-
+            Rectangle cardSourceRec = { (float)frameIndex * frameWidth, 0.0f, frameWidth, frameHeight };
             Vector2 cardPos = { 55.0f, 105.0f };
             float cardScale = 4.5f;
 
@@ -302,7 +350,6 @@ void GameplayState::Draw() {
             if (cardFlickerTimer > 0.0f) {
                 float alpha = (sinf(cardFlickerTimer * 40.0f) > 0.0f) ? 0.3f : 1.0f;
                 cardColor = ColorAlpha(RED, alpha);
-
                 shakeOffset.x = (float)GetRandomValue(-3, 3);
                 shakeOffset.y = (float)GetRandomValue(-3, 3);
             }
@@ -317,7 +364,6 @@ void GameplayState::Draw() {
             DrawTexturePro(cardTex, cardSourceRec, cardDestRec, Vector2{ 0.0f, 0.0f }, 0.0f, cardColor);
         }
 
-        // --- ДЕБАГ ПАНЕЛЬ ---
         Rectangle foot = player->GetFootCollider();
         DrawRectangle(10, 10, 350, 80, Fade(BLACK, 0.8f));
         DrawRectangleLines(10, 10, 350, 80, GREEN);
@@ -327,8 +373,53 @@ void GameplayState::Draw() {
         DrawText(TextFormat("Tile Coords: X: %d | Y: %d", (int)(foot.x / 32.0f), (int)(foot.y / 32.0f)), 20, 65, 18, YELLOW);
     }
 
-    // --- ЗАТЕМНЕННЯ ПРИ ПЕРЕХОДІ ЛОКАЦІЇ ---
+    // 4. ЗАТЕМНЕННЯ ПРИ ТЕЛЕПОРТАЦІЇ
     if (tpFadeAlpha > 0.0f) {
         DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, tpFadeAlpha));
     }
+
+    // 5. ЕФЕКТ СМЕРТІ ПЕРЕД GAME OVER
+    if (isDying) {
+        float clampedAlpha = (deathFadeAlpha > 1.0f) ? 1.0f : deathFadeAlpha;
+        // Спочатку спалах червоного, який переходить у чорний
+        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(MAROON, clampedAlpha * 0.45f));
+        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, clampedAlpha));
+    }
+
+    // 6. ОВЕРЛЕЙ ПАУЗИ
+    if (isPaused) {
+        DrawPauseMenu();
+    }
+}
+
+void GameplayState::DrawPauseMenu() {
+    float screenW = (float)GetScreenWidth();
+    float screenH = (float)GetScreenHeight();
+
+    // Напівпрозоре затемнення ігрового світу
+    DrawRectangle(0, 0, (int)screenW, (int)screenH, Fade(BLACK, 0.72f));
+
+    const char* pauseTitle = "PAUSED";
+    int fontSize = 54;
+    int textWidth = MeasureText(pauseTitle, fontSize);
+    DrawText(pauseTitle, (int)((screenW - textWidth) * 0.5f), (int)(screenH * 0.28f), fontSize, GOLD);
+
+    DrawPauseButton(resumeButton);
+    DrawPauseButton(exitToMenuButton);
+}
+
+void GameplayState::DrawPauseButton(const PauseButton& btn) {
+    Color rectColor = btn.isHovered ? Fade(GOLD, 0.3f) : Fade(DARKGRAY, 0.6f);
+    Color borderColor = btn.isHovered ? GOLD : GRAY;
+    Color textColor = btn.isHovered ? WHITE : LIGHTGRAY;
+
+    DrawRectangleRec(btn.bounds, rectColor);
+    DrawRectangleLinesEx(btn.bounds, 2.0f, borderColor);
+
+    int fontSize = 24;
+    int textWidth = MeasureText(btn.text.c_str(), fontSize);
+    float textX = btn.bounds.x + (btn.bounds.width - textWidth) * 0.5f;
+    float textY = btn.bounds.y + (btn.bounds.height - fontSize) * 0.5f;
+
+    DrawText(btn.text.c_str(), (int)textX, (int)textY, fontSize, textColor);
 }

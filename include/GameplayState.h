@@ -14,6 +14,12 @@
 #include <cmath>
 #include <memory>
 
+struct PauseButton {
+    Rectangle bounds;
+    std::string text;
+    bool isHovered = false;
+};
+
 class GameplayState : public GameState {
 public:
     void Init() override;
@@ -53,9 +59,19 @@ private:
     float flickerTimer = 0.0f;
     float currentFlicker = 1.0f;
 
-    // Прапорці та стани переходу локації
+    // --- ПАУЗА ---
     bool isPaused = false;
-    bool isGameOverProcessed = false;
+    PauseButton resumeButton;
+    PauseButton exitToMenuButton;
+    void UpdatePauseMenu();
+    void DrawPauseMenu();
+    void DrawPauseButton(const PauseButton& btn);
+
+    // --- СМЕРТЬ ТА ПЕРЕХІД В GAME OVER ---
+    bool isDying = false;
+    float deathFadeAlpha = 0.0f;
+    float deathFadeSpeed = 1.2f; // ~0.8 сек червоно-чорного затемнення перед GameOverState
+
     bool showDebugOverlay = false;
 
     enum class TeleportPhase {
@@ -66,7 +82,7 @@ private:
 
     TeleportPhase tpPhase = TeleportPhase::NONE;
     float tpFadeAlpha = 0.0f;
-    float tpFadeSpeed = 2.8f; // ~0.35 сек на затемнення і ~0.35 сек на проявлення
+    float tpFadeSpeed = 2.8f;
     Vector2 pendingTeleportPos = { 0.0f, 0.0f };
     bool waitForKeysRelease = false;
     bool wasInTrigger = false;
