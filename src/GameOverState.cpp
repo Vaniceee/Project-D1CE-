@@ -3,25 +3,23 @@
 #include "GameplayState.h"
 #include "GameManager.h"
 #include "AssetManager.h"
+#include "CustomCursor.h"
 #include "config.h"
 #include "Logger.h"
 #include "raymath.h"
 #include <cmath>
 
 void GameOverState::Init() {
+    HideCursor();
     AssetManager& am = AssetManager::Instance();
 
-    // 1. Завантаження розірваного туза (останній кадр спрайтшиту життів)
     am.LoadTexture("card_lives", Config::PATH_PNG_CARD_LIVES);
     tornCardTexture = am.GetTexture("card_lives");
     hasTornCard = (tornCardTexture.id > 0);
 
-    // 2. ШАБЛОН: фон (якщо файл з'явиться — шейдер автоматично накладе перешкоди поверх нього)
-    // am.LoadTexture("GameOverBG", "assets/menu/GameOverBG.png");
     bgTexture = am.GetTexture("GameOverBG");
     hasBackground = (bgTexture.id > 0);
 
-    // 3. Ініціалізація шейдера втраченого сигналу
     gameOverShader = LoadShader(0, Config::PATH_SHADER_GAMEOVER);
     if (gameOverShader.id != 0) {
         resLoc = GetShaderLocation(gameOverShader, "resolution");
@@ -39,7 +37,6 @@ void GameOverState::Init() {
         SetShaderValue(gameOverShader, hasBgLoc, &bgFlag, SHADER_UNIFORM_FLOAT);
     }
 
-    // 4. Звук розриву карти при старті екрана поразки
     am.LoadSound("card_rip", Config::PATH_SFX_CARD_RIP);
     gameOverSound = am.GetSound("card_rip");
     hasSound = (gameOverSound.stream.buffer != nullptr);
@@ -49,7 +46,6 @@ void GameOverState::Init() {
         PlaySound(gameOverSound);
     }
 
-    // 5. Генерація тактильного звуку наведення на кнопки
     Wave clickWave = { 0 };
     clickWave.sampleRate = 44100;
     clickWave.sampleSize = 16;
@@ -72,8 +68,6 @@ void GameOverState::Init() {
         }
     }
 
-    // 6. ШАБЛОН: ембієнт поразки
-    // am.LoadMusic("GameOverTheme", "assets/music/gameover_theme.wav");
     gameOverMusic = am.GetMusic("GameOverTheme");
     hasMusic = (gameOverMusic.stream.buffer != nullptr);
     if (hasMusic) {
@@ -196,6 +190,9 @@ void GameOverState::Update() {
     float animSpeed = 1.0f - expf(-12.0f * dt);
     retryButton.hoverProgress = Lerp(retryButton.hoverProgress, retryButton.isHovered ? 1.0f : 0.0f, animSpeed);
     menuButton.hoverProgress = Lerp(menuButton.hoverProgress, menuButton.isHovered ? 1.0f : 0.0f, animSpeed);
+
+    bool anyHovered = (sceneTimer >= buttonAppearDelay) && (retryButton.isHovered || menuButton.isHovered);
+    CustomCursor::Update(dt, anyHovered);
 }
 
 void GameOverState::Draw() {
@@ -205,7 +202,6 @@ void GameOverState::Draw() {
     float screenH = (float)GetScreenHeight();
     float fadeProgress = Clamp(sceneTimer / fadeInDuration, 0.0f, 1.0f);
 
-    // 1. Фон із шейдером втраченого сигналу (NO SIGNAL)
     if (gameOverShader.id != 0) {
         BeginShaderMode(gameOverShader);
     }
@@ -228,38 +224,33 @@ void GameOverState::Draw() {
         EndShaderMode();
     }
 
-    // 2. Анімований розірваний туз над заголовком
     DrawTornAceCard(screenW, screenH, fadeProgress);
-
-    // 3. Багряний неоновий заголовок "GAME OVER"
     DrawNeonGameOverTitle(screenW, screenH, fadeProgress);
 
-    // 4. Кнопки TRY AGAIN та MAIN MENU у стилі Art Deco
     if (sceneTimer >= buttonAppearDelay) {
         float btnAlpha = Clamp((sceneTimer - buttonAppearDelay) / 0.55f, 0.0f, 1.0f);
         DrawButton(retryButton, btnAlpha);
         DrawButton(menuButton, btnAlpha);
     }
 
-    // 5. Кутові візири CCTV та статус втрати сигналу
     DrawNoSignalHud(screenW, screenH, fadeProgress);
 
-    // 6. Плавне затемнення при переході
     if (exitTarget != ExitTarget::NONE) {
         float outAlpha = Clamp(exitFadeTimer / exitFadeDuration, 0.0f, 1.0f);
         DrawRectangle(0, 0, (int)screenW, (int)screenH, Fade(BLACK, outAlpha));
+    }
+    else {
+        CustomCursor::Draw(menuButton.isHovered);
     }
 }
 
 void GameOverState::DrawTornAceCard(float screenW, float screenH, float fadeProgress) {
     if (!hasTornCard) return;
 
-    // Останній (4-й) кадр спрайтшиту LifesAce.png — повністю розірвана карта
     const float frameWidth = 32.0f;
     const float frameHeight = 32.0f;
     Rectangle sourceRec = { 3.0f * frameWidth, 0.0f, frameWidth, frameHeight };
 
-    // Ефект падіння/удару в перші 0.45 с + легке погойдування
     float dropT = Clamp(sceneTimer / 0.45f, 0.0f, 1.0f);
     float easeOut = 1.0f - powf(1.0f - dropT, 3.0f);
     float scale = Lerp(6.8f, 4.6f, easeOut);
@@ -278,7 +269,6 @@ void GameOverState::DrawTornAceCard(float screenW, float screenH, float fadeProg
     };
     Vector2 origin = { destRec.width * 0.5f, destRec.height * 0.5f };
 
-    // Багряний ореол позаду карти
     DrawCircleV(centerPos, 78.0f, ColorAlpha(MAROON, 0.10f * fadeProgress));
     DrawCircleV(centerPos, 54.0f, ColorAlpha(MAROON, 0.16f * fadeProgress));
     DrawCircleV(centerPos, 32.0f, ColorAlpha(MAROON, 0.22f * fadeProgress));
@@ -298,7 +288,6 @@ void GameOverState::DrawNeonGameOverTitle(float screenW, float screenH, float fa
         jitterY = (float)GetRandomValue(-3, 3) * decay;
     }
 
-    // Мерехтіння розбитої червоної неонової вивіски
     float cycle = fmodf(sceneTimer, 3.6f);
     float tubeFlicker = 0.90f + 0.10f * sinf(sceneTimer * 7.5f);
     if (cycle > 2.95f && cycle < 3.12f) {
@@ -309,15 +298,12 @@ void GameOverState::DrawNeonGameOverTitle(float screenW, float screenH, float fa
     int titleX = (int)((screenW - titleWidth) * 0.5f + jitterX);
     int titleY = (int)(screenH * 0.31f + jitterY);
 
-    // Темна підкладка
     DrawRectangleGradientH(titleX - 70, titleY - 14, titleWidth / 2 + 70, titleSize + 28, Fade(BLACK, 0.0f), Fade(BLACK, 0.58f * fadeProgress));
     DrawRectangleGradientH(titleX + titleWidth / 2, titleY - 14, titleWidth / 2 + 70, titleSize + 28, Fade(BLACK, 0.58f * fadeProgress), Fade(BLACK, 0.0f));
 
-    // Хроматична тінь
     DrawText(titleText, titleX - 3, titleY + 2, titleSize, ColorAlpha(SKYBLUE, 0.22f * alpha));
     DrawText(titleText, titleX + 3, titleY - 2, titleSize, ColorAlpha(MAROON, 0.55f * alpha));
 
-    // Багряний неоновий ореол
     Color outerGlow = ColorAlpha(MAROON, 0.35f * alpha);
     Color innerGlow = ColorAlpha(RED, 0.48f * alpha);
 
@@ -329,10 +315,8 @@ void GameOverState::DrawNeonGameOverTitle(float screenW, float screenH, float fa
     DrawText(titleText, titleX - 1, titleY - 1, titleSize, innerGlow);
     DrawText(titleText, titleX + 1, titleY + 1, titleSize, innerGlow);
 
-    // Серцевина тексту
     DrawText(titleText, titleX, titleY, titleSize, ColorAlpha(Color{ 255, 68, 76, 255 }, alpha));
 
-    // Декоративна лінія з багряним ромбом
     float centerX = screenW * 0.5f;
     float lineY = (float)(titleY + titleSize + 12);
     float halfSpan = titleWidth * 0.45f;
@@ -341,7 +325,6 @@ void GameOverState::DrawNeonGameOverTitle(float screenW, float screenH, float fa
     DrawLineEx({ centerX + 14.0f, lineY }, { centerX + halfSpan, lineY }, 1.5f, ColorAlpha(RED, 0.45f * alpha));
     DrawPoly({ centerX, lineY }, 4, 5.5f, 0.0f, ColorAlpha(RED, 0.85f * alpha));
 
-    // Підзаголовок
     const char* subText = "The house always wins...";
     int subSize = 23;
     int subWidth = MeasureText(subText, subSize);

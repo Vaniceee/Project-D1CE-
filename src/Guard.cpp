@@ -347,6 +347,17 @@ void Guard::FollowPath(float moveSpeed, const GameMap& gameMap, float dt) {
 }
 
 void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
+    visualPulseTime += dt;
+    for (size_t i = 0; i < eyeTrail.size(); ) {
+        eyeTrail[i].alpha -= dt * 3.4f;
+        if (eyeTrail[i].alpha <= 0.0f) {
+            eyeTrail.erase(eyeTrail.begin() + i);
+        }
+        else {
+            ++i;
+        }
+    }
+
     if (isTeleporting) {
         teleportTimer -= dt;
         UpdateChaseAudio(9999.0f, dt);
@@ -357,6 +368,7 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
             chaseMemoryTimer = 0.0f;
             pursuingTeleport = false;
             currentPath.clear();
+            eyeTrail.clear();
 
             if (returningViaTeleport) {
                 returningViaTeleport = false;
@@ -457,6 +469,25 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
     }
 
     UpdateChaseAudio(distToPlayer, dt);
+
+    if (currentState == GuardState::CHASE && !isTeleporting) {
+        eyeTrailSpawnTimer -= dt;
+        if (eyeTrailSpawnTimer <= 0.0f) {
+            eyeTrailSpawnTimer = 0.032f;
+
+            float w = collider.width * scale;
+            Vector2 headCenter = { position.x + w * 0.5f, position.y + 13.0f };
+            Vector2 lookDir = { cosf(facingAngle), sinf(facingAngle) };
+            Vector2 perpDir = { -lookDir.y, lookDir.x };
+
+            Vector2 eyeBase = Vector2Add(headCenter, Vector2Scale(lookDir, 4.5f));
+            EyeTrailPoint pt;
+            pt.leftEye = Vector2Add(eyeBase, Vector2Scale(perpDir, -4.0f));
+            pt.rightEye = Vector2Add(eyeBase, Vector2Scale(perpDir, 4.0f));
+            pt.alpha = 0.72f;
+            eyeTrail.push_back(pt);
+        }
+    }
 
     collider.x = position.x + footOffsetX;
     collider.y = position.y + footOffsetY;
@@ -613,16 +644,44 @@ void Guard::UpdateChaseState(Player& player, const GameMap& gameMap, float dt) {
 }
 
 void Guard::Draw() {
+    float alphaMult = isTeleporting ? 0.35f : 1.0f;
+
     Color guardColor = RED;
     if (attackCooldownTimer > 0.0f) guardColor = MAROON;
     else if (currentState == GuardState::INVESTIGATE) guardColor = ORANGE;
     else if (currentState == GuardState::PATROL) guardColor = BLUE;
 
-    if (isTeleporting) {
-        guardColor = ColorAlpha(guardColor, 0.35f);
+    float w = collider.width * scale;
+    float h = collider.height * scale;
+
+    // 1. Примарний шлейф червоних очей під час погоні
+    for (const auto& pt : eyeTrail) {
+        float a = pt.alpha * alphaMult;
+        DrawCircleV(pt.leftEye, 3.2f, ColorAlpha(RED, a * 0.45f));
+        DrawCircleV(pt.rightEye, 3.2f, ColorAlpha(RED, a * 0.45f));
     }
 
-    DrawRectangleRec({ position.x, position.y, collider.width * scale, collider.height * scale }, guardColor);
+    // 2. Силует охоронця
+    DrawRectangleRec({ position.x, position.y, w, h }, ColorAlpha(guardColor, alphaMult));
+
+    // 3. Очі, що світяться у напрямку погляду
+    Vector2 headCenter = { position.x + w * 0.5f, position.y + 13.0f };
+    Vector2 lookDir = { cosf(facingAngle), sinf(facingAngle) };
+    Vector2 perpDir = { -lookDir.y, lookDir.x };
+
+    Vector2 eyeBase = Vector2Add(headCenter, Vector2Scale(lookDir, 4.5f));
+    Vector2 leftEye = Vector2Add(eyeBase, Vector2Scale(perpDir, -4.0f));
+    Vector2 rightEye = Vector2Add(eyeBase, Vector2Scale(perpDir, 4.0f));
+
+    Color eyeGlow = (currentState == GuardState::CHASE) ? RED : ORANGE;
+    float pulse = 0.80f + 0.20f * sinf(visualPulseTime * (currentState == GuardState::CHASE ? 14.0f : 4.0f));
+
+    DrawCircleV(leftEye, 5.0f, ColorAlpha(eyeGlow, 0.30f * pulse * alphaMult));
+    DrawCircleV(rightEye, 5.0f, ColorAlpha(eyeGlow, 0.30f * pulse * alphaMult));
+
+    Color eyeCore = (currentState == GuardState::CHASE) ? Color{ 255, 95, 95, 255 } : GOLD;
+    DrawCircleV(leftEye, 2.1f, ColorAlpha(eyeCore, alphaMult));
+    DrawCircleV(rightEye, 2.1f, ColorAlpha(eyeCore, alphaMult));
 }
 
 void Guard::DrawDebug() const {

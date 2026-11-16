@@ -2,10 +2,12 @@
 #include "GameplayState.h"
 #include "GameManager.h"
 #include "Logger.h"
+#include "CustomCursor.h"
 #include "raymath.h"
 #include <cmath>
 
 void MainMenuState::Init() {
+    HideCursor();
     AssetManager& am = AssetManager::Instance();
 
     // 1. Завантаження фону
@@ -54,7 +56,7 @@ void MainMenuState::Init() {
     clickWave.sampleRate = 44100;
     clickWave.sampleSize = 16;
     clickWave.channels = 1;
-    clickWave.frameCount = 1100; // ~25 мс
+    clickWave.frameCount = 1100;
     short* samples = (short*)RL_MALLOC(clickWave.frameCount * sizeof(short));
     if (samples != nullptr) {
         for (unsigned int i = 0; i < clickWave.frameCount; ++i) {
@@ -125,7 +127,6 @@ void MainMenuState::Update() {
     float screenH = (float)GetScreenHeight();
     Vector2 mousePos = GetMousePosition();
 
-    // Плавний розрахунок позиції курсора відносно центру екрана (-1.0 .. 1.0)
     Vector2 targetMouseOffset = { 0.0f, 0.0f };
     if (!isTransitioning && screenW > 1.0f && screenH > 1.0f) {
         targetMouseOffset.x = Clamp((mousePos.x / screenW) * 2.0f - 1.0f, -1.0f, 1.0f);
@@ -196,10 +197,12 @@ void MainMenuState::Update() {
         }
     }
 
-    // Плавна інтерполяція анімації наведення кнопок
     float hoverAnimSpeed = 1.0f - expf(-12.0f * deltaTime);
     playButton.hoverProgress = Lerp(playButton.hoverProgress, (playButton.isHovered && !isTransitioning) ? 1.0f : 0.0f, hoverAnimSpeed);
     exitButton.hoverProgress = Lerp(exitButton.hoverProgress, (exitButton.isHovered && !isTransitioning) ? 1.0f : 0.0f, hoverAnimSpeed);
+
+    bool anyHovered = !isTransitioning && (playButton.isHovered || exitButton.isHovered);
+    CustomCursor::Update(deltaTime, anyHovered);
 
     if (menuShader.id != 0) {
         float res[2] = { screenW, screenH };
@@ -217,7 +220,6 @@ void MainMenuState::Draw() {
     float screenW = (float)GetScreenWidth();
     float screenH = (float)GetScreenHeight();
 
-    // 1. МАЛЮВАННЯ ФОНУ З ШЕЙДЕРОМ ДИМУ, ГЛІТЧІВ ТА ПАРАЛАКСУ
     if (hasBackground) {
         if (menuShader.id != 0) {
             BeginShaderMode(menuShader);
@@ -237,18 +239,14 @@ void MainMenuState::Draw() {
         }
     }
 
-    // 2. НЕОНОВИЙ ЗАГОЛОВОК ІЗ МЕРЕХТІННЯМ ЛАМПИ
     DrawNeonTitle(screenW, screenH);
 
-    // 3. МАЛЮВАННЯ КНОПОК У СТИЛІ КАЗИНО
     DrawButton(playButton);
     DrawButton(exitButton);
 
-    // 4. HUD-РАМКА КАМЕРИ СПОСТЕРЕЖЕННЯ
     float progress = isTransitioning ? Clamp(transitionTimer / transitionDuration, 0.0f, 1.0f) : 0.0f;
     DrawCctvOverlay(screenW, screenH, progress);
 
-    // 5. ПЕРЕХІД У ГРУ
     if (isTransitioning) {
         Vector2 center = { screenW * 0.5f, screenH * 0.5f };
 
@@ -260,10 +258,12 @@ void MainMenuState::Draw() {
             DrawCircleLinesV(center, innerRadius, ColorAlpha(RED, 0.4f * progress));
         }
     }
+    else {
+        CustomCursor::Draw(exitButton.isHovered);
+    }
 }
 
 void MainMenuState::DrawNeonTitle(float screenW, float screenH) {
-    // Періодичне «коротіння» символу 0 або 1 як на старій неоновій вивісці казино
     std::string titleStr = "_PR0JECT_D1CE";
     float cycle = fmodf(shaderTime, 4.2f);
     float tubeBrightness = 1.0f;
@@ -285,15 +285,12 @@ void MainMenuState::DrawNeonTitle(float screenW, float screenH) {
     float breathe = 0.88f + 0.12f * sinf(shaderTime * 3.2f);
     float glowAlpha = breathe * tubeBrightness;
 
-    // М'яка темна підкладка під вивіскою для контрасту
     DrawRectangleGradientH(titleX - 60, titleY - 14, textWidth / 2 + 60, fontSize + 28, Fade(BLACK, 0.0f), Fade(BLACK, 0.52f));
     DrawRectangleGradientH(titleX + textWidth / 2, titleY - 14, textWidth / 2 + 60, fontSize + 28, Fade(BLACK, 0.52f), Fade(BLACK, 0.0f));
 
-    // Хроматична тінь (червоний і холодний зсув)
     DrawText(titleStr.c_str(), titleX - 3, titleY + 2, fontSize, ColorAlpha(RED, 0.35f * glowAlpha));
     DrawText(titleStr.c_str(), titleX + 3, titleY - 1, fontSize, ColorAlpha(SKYBLUE, 0.18f * glowAlpha));
 
-    // Багатошаровий неоновий ореол
     Color outerGlow = ColorAlpha(ORANGE, 0.22f * glowAlpha);
     Color innerGlow = ColorAlpha(GOLD, 0.42f * glowAlpha);
 
@@ -305,13 +302,11 @@ void MainMenuState::DrawNeonTitle(float screenW, float screenH) {
     DrawText(titleStr.c_str(), titleX - 1, titleY - 1, fontSize, innerGlow);
     DrawText(titleStr.c_str(), titleX + 1, titleY + 1, fontSize, innerGlow);
 
-    // Основна яскрава серцевина лампи
     Color coreColor = (tubeBrightness < 0.8f)
         ? Color{ 225, 185, 75, 235 }
     : Color{ 255, 226, 110, 255 };
     DrawText(titleStr.c_str(), titleX, titleY, fontSize, coreColor);
 
-    // Декоративна неонова лінія з ромбом під заголовком
     float centerX = titleX + textWidth * 0.5f;
     float lineY = (float)(titleY + fontSize + 14);
     float halfSpan = textWidth * 0.44f;
@@ -325,11 +320,9 @@ void MainMenuState::DrawNeonTitle(float screenW, float screenH) {
 void MainMenuState::DrawButton(const MenuButton& btn) {
     float p = btn.hoverProgress;
 
-    // Плавне розширення плашки при наведенні
     float expandX = p * 14.0f;
     float expandY = p * 2.0f;
 
-    // Легке тривожне тремтіння для кнопки EXIT при наведенні
     float jitterX = 0.0f;
     float jitterY = 0.0f;
     if (btn.isDanger && p > 0.05f) {
@@ -348,20 +341,17 @@ void MainMenuState::DrawButton(const MenuButton& btn) {
     Color darkFillBase = btn.isDanger ? Color{ 16, 10, 12, 215 } : Color{ 12, 13, 16, 215 };
     Color hoverTint = btn.isDanger ? ColorAlpha(MAROON, 0.36f * p) : ColorAlpha(GOLD, 0.16f * p);
 
-    // 1. Тінь під кнопкою + м'яке зовнішнє світіння при наведенні
     DrawRectangle((int)rect.x + 4, (int)rect.y + 5, (int)rect.width, (int)rect.height, Fade(BLACK, 0.65f));
     if (p > 0.01f) {
         Rectangle glowRect = { rect.x - 4.0f, rect.y - 4.0f, rect.width + 8.0f, rect.height + 8.0f };
         DrawRectangleLinesEx(glowRect, 2.0f, ColorAlpha(accentColor, 0.25f * p));
     }
 
-    // 2. Оксамитова темна основа плашки
     DrawRectangleRec(rect, darkFillBase);
     if (p > 0.01f) {
         DrawRectangleRec(rect, hoverTint);
     }
 
-    // 3. Світловий блік, що пробігає по плашці при наведенні
     if (p > 0.02f) {
         BeginScissorMode((int)rect.x, (int)rect.y, (int)rect.width, (int)rect.height);
         float sweepPhase = fmodf(shaderTime * 1.35f, 1.8f) - 0.4f;
@@ -375,7 +365,6 @@ void MainMenuState::DrawButton(const MenuButton& btn) {
         EndScissorMode();
     }
 
-    // 4. Подвійна рамка в стилі казино (Art Deco)
     Color outerBorder = ColorLerp(Color{ 95, 95, 102, 200 }, accentColor, p);
     Color innerBorder = ColorAlpha(accentColor, 0.18f + 0.45f * p);
 
@@ -383,7 +372,6 @@ void MainMenuState::DrawButton(const MenuButton& btn) {
     Rectangle innerRect = { rect.x + 5.0f, rect.y + 5.0f, rect.width - 10.0f, rect.height - 10.0f };
     DrawRectangleLinesEx(innerRect, 1.0f, innerBorder);
 
-    // 5. Кутові ромби-заклепки на внутрішній рамці
     float cornerR = 3.0f + p * 1.0f;
     Color cornerCol = ColorLerp(GRAY, accentColor, p);
     DrawPoly({ innerRect.x, innerRect.y }, 4, cornerR, 0.0f, cornerCol);
@@ -391,7 +379,6 @@ void MainMenuState::DrawButton(const MenuButton& btn) {
     DrawPoly({ innerRect.x, innerRect.y + innerRect.height }, 4, cornerR, 0.0f, cornerCol);
     DrawPoly({ innerRect.x + innerRect.width, innerRect.y + innerRect.height }, 4, cornerR, 0.0f, cornerCol);
 
-    // 6. Текст кнопки та бокові ромби, що виїжджають при наведенні
     int fontSize = 25;
     int textWidth = MeasureText(btn.text.c_str(), fontSize);
     float textX = rect.x + (rect.width - textWidth) * 0.5f;
@@ -418,23 +405,18 @@ void MainMenuState::DrawCctvOverlay(float screenW, float screenH, float transiti
     float thick = 1.5f;
     Color hudColor = ColorAlpha(Color{ 170, 195, 178, 255 }, 0.32f * (1.0f - transitionProgress));
 
-    // Верхній лівий кут
     DrawLineEx({ margin, margin }, { margin + armLen, margin }, thick, hudColor);
     DrawLineEx({ margin, margin }, { margin, margin + armLen }, thick, hudColor);
 
-    // Верхній правий кут
     DrawLineEx({ screenW - margin - armLen, margin }, { screenW - margin, margin }, thick, hudColor);
     DrawLineEx({ screenW - margin, margin }, { screenW - margin, margin + armLen }, thick, hudColor);
 
-    // Нижній лівий кут
     DrawLineEx({ margin, screenH - margin }, { margin + armLen, screenH - margin }, thick, hudColor);
     DrawLineEx({ margin, screenH - margin - armLen }, { margin, screenH - margin }, thick, hudColor);
 
-    // Нижній правий кут
     DrawLineEx({ screenW - margin - armLen, screenH - margin }, { screenW - margin, screenH - margin }, thick, hudColor);
     DrawLineEx({ screenW - margin, screenH - margin - armLen }, { screenW - margin, screenH - margin }, thick, hudColor);
 
-    // Індикатор запису камери у верхньому лівому куті
     float recAlpha = 1.0f - transitionProgress;
     if (recAlpha > 0.05f) {
         bool recBlink = (fmodf(shaderTime, 1.4f) < 0.85f);

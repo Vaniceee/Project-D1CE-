@@ -13,6 +13,10 @@ public:
     void AddTrauma(float amount);
     void SetMinTrauma(float minAmount);
 
+    // Динамічний зум (для переходу між залами та спалаху виявлення)
+    void SetZoom(float newZoom) { camera.zoom = newZoom; }
+    float GetZoom() const { return camera.zoom; }
+
     const Camera2D& GetCamera() const { return camera; }
     Vector2 GetScreenPosition(Vector2 worldPos) const;
 

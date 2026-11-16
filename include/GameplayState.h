@@ -11,6 +11,7 @@
 #include "raylib.h"
 #include "raymath.h"
 #include <string>
+#include <vector>
 #include <cmath>
 #include <memory>
 
@@ -79,6 +80,23 @@ private:
     Vector2 lightWorldPos = { 0.0f, 0.0f };
     Vector2 lightVelocity = { 0.0f, 0.0f };
     bool isLightPosInitialized = false;
+
+    // --- ПУЛ ЧАСТИНОК ПИЛУ ПІД НОГАМИ ПРИ СПРИНТІ ---
+    struct SprintDustParticle {
+        Vector2 pos;
+        Vector2 vel;
+        float life;
+        float maxLife;
+        float size;
+    };
+    std::vector<SprintDustParticle> sprintDust;
+    float sprintDustTimer = 0.0f;
+
+    // --- ВІЗУАЛЬНІ ЕФЕКТИ ВИЯВЛЕННЯ ТА ПЕРЕМИКАННЯ КАМЕР ---
+    GuardState lastGuardState = GuardState::PATROL;
+    float detectionFlashTimer = 0.0f;
+    float baseCameraZoom = 1.8f;
+    int currentCamNumber = 1;
 
     // --- ПАУЗА ---
     bool isPaused = false;

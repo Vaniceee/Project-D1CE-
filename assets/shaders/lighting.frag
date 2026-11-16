@@ -16,9 +16,8 @@ uniform float dangerFactor;
 // Параметри стану гравця
 uniform float exhaustionFactor; // 0.0 .. 1.0 (низька стаміна / виснаження)
 uniform float panicFactor;      // 0.0 .. 1.0 (близькість охоронця / погоня / удар)
-uniform float time;             // Час для пульсації серцебиття, хвиль та зерна
+uniform float time;             // Час для пульсації серцебиття, хвиль, пилу та зерна
 
-// Псевдовипадковий генератор без артефактів смуг
 float hash13(vec3 p3)
 {
     p3 = fract(p3 * 0.1031);
@@ -26,11 +25,43 @@ float hash13(vec3 p3)
     return fract((p3.x + p3.y) * p3.z);
 }
 
+vec2 hash22(vec2 p)
+{
+    vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.xx + p3.yz) * p3.zy);
+}
+
+// Дрібні порошинки, що виблискують у конусі ліхтарика
+float LightDustLayer(vec2 pixelPos, float cellSize, float speed, float radiusFrac, float seed)
+{
+    vec2 drift = vec2(
+        sin(time * 0.35 + seed) * 14.0 - time * speed * 6.0,
+        cos(time * 0.28 + seed * 1.7) * 10.0 - time * speed * 4.5
+    );
+    vec2 p = (pixelPos + drift) / cellSize + seed * 11.3;
+    vec2 cell = floor(p);
+    vec2 f = fract(p) - 0.5;
+
+    vec2 rnd = hash22(cell);
+    if (rnd.x < 0.80) return 0.0;
+
+    vec2 wobble = vec2(
+        sin(time * (1.1 + rnd.y * 1.4) + rnd.x * 6.28),
+        cos(time * (0.9 + rnd.x * 1.3) + rnd.y * 6.28)
+    ) * 0.28;
+
+    float d = length(f - wobble);
+    float mote = 1.0 - smoothstep(radiusFrac * 0.45, radiusFrac, d);
+    float twinkle = 0.4 + 0.6 * sin(time * (2.2 + rnd.y * 2.8) + rnd.x * 12.0);
+    return mote * twinkle;
+}
+
 void main()
 {
     vec2 uv = fragTexCoord;
     vec2 centeredUV = uv - 0.5;
-    float centerDist = length(centeredUV) * 1.4142; // 0.0 у центрі, ~1.0 по кутах
+    float centerDist = length(centeredUV) * 1.4142;
     vec2 radialDir = (centerDist > 0.0001) ? normalize(centeredUV) : vec2(0.0);
     float edgeMask = clamp(pow(centerDist, 2.0), 0.0, 1.0);
 
@@ -78,6 +109,16 @@ void main()
 
     vec3 finalRGB = mix(texRGB * ambientColor.rgb, litColor, lightFactor);
 
+    // 3.5 ПИЛИНКИ В ПОВІТРІ НАВКОЛО ДЖЕРЕЛА СВІТЛА
+    float dustMask = smoothstep(0.08, 0.65, lightFactor) * (1.0 - smoothstep(0.85, 1.0, lightFactor));
+    if (dustMask > 0.01) {
+        float d1 = LightDustLayer(pixelPos, 46.0, 0.55, 0.085, 1.0);
+        float d2 = LightDustLayer(pixelPos, 32.0, 0.38, 0.070, 2.0);
+        float dustSum = clamp(d1 * 0.9 + d2 * 0.65, 0.0, 1.2);
+        vec3 dustTint = mix(vec3(1.0, 0.94, 0.80), vec3(1.0, 0.45, 0.40), dangerFactor * 0.55);
+        finalRGB += dustTint * dustSum * dustMask * 0.32;
+    }
+
     // 4. ФІЛЬТРАЦІЯ КОЛЬОРІВ ТА КОНТРАСТУ (виснаження vs адреналін)
     float finalLuma = dot(finalRGB, vec3(0.299, 0.587, 0.114));
     vec3 exhaustedLook = mix(finalRGB, vec3(finalLuma) * vec3(0.90, 0.94, 1.03), exhaustionFactor * 0.58);
@@ -97,15 +138,13 @@ void main()
     vec3 tunnelTint = mix(vec3(0.0), vec3(0.14, 0.01, 0.01), panicFactor * (1.0 - vignette) * (0.4 + 0.6 * heartPulse));
     finalRGB = finalRGB * mix(1.0, vignette, 0.35 + stressLevel * 0.65) + tunnelTint;
 
-    // 6. НЕНАВ'ЯЗЛИВА ПЛІВКОВА ЗЕРНИСТІСТЬ (24 FPS, прив'язка до сітки пікселів)
+    // 6. ПЛІВКОВА ЗЕРНИСТІСТЬ (24 FPS, прив'язка до сітки пікселів)
     vec2 grainPixel = floor(uv * resolution);
     float grainFrame = floor(time * 24.0);
-    // Трикутний розподіл шуму (приємніший для ока, ніж рівномірний)
     float n1 = hash13(vec3(grainPixel, grainFrame));
     float n2 = hash13(vec3(grainPixel + 19.37, grainFrame + 7.13));
     float filmNoise = (n1 + n2 - 1.0);
 
-    // У темряві та під час паніки/втоми зерно трохи відчутніше, у центрі світла — ледь помітне
     float shadowBoost = mix(1.25, 0.65, lightFactor);
     float grainStrength = (0.018 + stressLevel * 0.014) * shadowBoost;
     finalRGB = clamp(finalRGB + vec3(filmNoise * grainStrength), 0.0, 1.0);

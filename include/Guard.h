@@ -67,6 +67,16 @@ private:
     float chaseFadeInSpeed = 4.0f;
     float chaseFadeOutSpeed = 1.1f;
 
+    // --- б╡гсюкэмю рекецпют╡ъ (нв╡ рю ькеит с онцнм╡) ---
+    struct EyeTrailPoint {
+        Vector2 leftEye;
+        Vector2 rightEye;
+        float alpha;
+    };
+    std::vector<EyeTrailPoint> eyeTrail;
+    float eyeTrailSpawnTimer = 0.0f;
+    float visualPulseTime = 0.0f;
+
     // --- мюб╡цюж╡ъ A* рю рекеонпрх ---
     AStar pathfinder;
     std::vector<Vector2> currentPath;

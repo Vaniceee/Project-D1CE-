@@ -3,6 +3,7 @@
 #include "GameOverState.h"
 #include "GameManager.h"
 #include "InputManager.h"
+#include "CustomCursor.h"
 
 void GameplayState::Init() {
     targetTexture = LoadRenderTexture(virtualWidth, virtualHeight);
@@ -103,7 +104,8 @@ void GameplayState::Init() {
     guard->InitPathfinding(gameMap);
 
     // 3. Ініціалізація камери
-    gameCamera.Init(startPos, virtualWidth, virtualHeight, 1.8f);
+    baseCameraZoom = 1.8f;
+    gameCamera.Init(startPos, virtualWidth, virtualHeight, baseCameraZoom);
 
     // 4. Ініціалізація кнопок меню паузи
     float screenW = (float)GetScreenWidth();
@@ -143,6 +145,12 @@ void GameplayState::Init() {
     shaderTime = 0.0f;
     lightDipTimer = 0.0f;
     lightDipDepth = 0.0f;
+
+    sprintDust.clear();
+    sprintDustTimer = 0.0f;
+    lastGuardState = GuardState::PATROL;
+    detectionFlashTimer = 0.0f;
+    currentCamNumber = 1;
 
     //======================MUSIC======================
     AssetManager::Instance().LoadMusic("ambient", Config::PATH_AUDIO_AMBIENT);
@@ -206,6 +214,8 @@ void GameplayState::UpdatePauseMenu(float dt) {
     float animSpeed = 1.0f - expf(-12.0f * dt);
     resumeButton.hoverProgress = Lerp(resumeButton.hoverProgress, resumeButton.isHovered ? 1.0f : 0.0f, animSpeed);
     exitToMenuButton.hoverProgress = Lerp(exitToMenuButton.hoverProgress, exitToMenuButton.isHovered ? 1.0f : 0.0f, animSpeed);
+
+    CustomCursor::Update(dt, resumeButton.isHovered || exitToMenuButton.isHovered);
 
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         if (resumeButton.isHovered) {
@@ -284,6 +294,7 @@ void GameplayState::Update() {
                 lightVelocity = { 0.0f, 0.0f };
 
                 tpPhase = TeleportPhase::FADING_IN;
+                currentCamNumber = (currentCamNumber % 8) + 1;
             }
         }
         else if (tpPhase == TeleportPhase::FADING_IN) {
@@ -320,6 +331,53 @@ void GameplayState::Update() {
 
         if (guard) {
             guard->Update(*player, gameMap, dt);
+
+            // Спалах виявлення, коли охоронець щойно перейшов у CHASE
+            GuardState nowState = guard->GetCurrentState();
+            if (nowState == GuardState::CHASE && lastGuardState != GuardState::CHASE) {
+                detectionFlashTimer = 0.42f;
+                damageImpulse = fmaxf(damageImpulse, 0.65f);
+                gameCamera.AddTrauma(0.38f);
+            }
+            lastGuardState = nowState;
+        }
+
+        if (detectionFlashTimer > 0.0f) {
+            detectionFlashTimer -= dt;
+            if (detectionFlashTimer < 0.0f) detectionFlashTimer = 0.0f;
+        }
+
+        // Оновлення частинок пилу під ногами під час спринту
+        for (size_t i = 0; i < sprintDust.size(); ) {
+            sprintDust[i].pos = Vector2Add(sprintDust[i].pos, Vector2Scale(sprintDust[i].vel, dt));
+            sprintDust[i].life -= dt;
+            if (sprintDust[i].life <= 0.0f) {
+                sprintDust.erase(sprintDust.begin() + i);
+            }
+            else {
+                ++i;
+            }
+        }
+
+        if (!isMovementBlocked && player->IsMoving() && player->IsSprinting()) {
+            sprintDustTimer -= dt;
+            if (sprintDustTimer <= 0.0f) {
+                sprintDustTimer = 0.065f;
+                Rectangle pf = player->GetFootCollider();
+                SprintDustParticle p;
+                p.pos = {
+                    pf.x + pf.width * 0.5f + (float)GetRandomValue(-5, 5),
+                    pf.y + pf.height - 2.0f
+                };
+                p.vel = {
+                    (float)GetRandomValue(-14, 14),
+                    (float)GetRandomValue(-18, -6)
+                };
+                p.maxLife = (float)GetRandomValue(28, 44) / 100.0f;
+                p.life = p.maxLife;
+                p.size = (float)GetRandomValue(20, 34) / 10.0f;
+                sprintDust.push_back(p);
+            }
         }
 
         if (player->GetLives() <= 0 && !isDying) {
@@ -419,6 +477,20 @@ void GameplayState::Update() {
         bool effectiveMoving = !isMovementBlocked && player->IsMoving();
         gameCamera.Update(desiredTarget, effectiveMoving, player->IsSprinting(), player->IsExhausted(), staminaRatio, dt);
 
+        // Динамічний зум для телепорту та спалаху виявлення
+        float targetZoom = baseCameraZoom;
+        if (tpPhase == TeleportPhase::FADING_OUT) {
+            targetZoom = baseCameraZoom + tpFadeAlpha * 0.38f;
+        }
+        else if (tpPhase == TeleportPhase::FADING_IN) {
+            targetZoom = baseCameraZoom + tpFadeAlpha * 0.25f;
+        }
+        else if (detectionFlashTimer > 0.0f) {
+            float flashWave = sinf((detectionFlashTimer / 0.42f) * PI);
+            targetZoom = baseCameraZoom + flashWave * 0.14f;
+        }
+        gameCamera.SetZoom(Lerp(gameCamera.GetZoom(), targetZoom, 1.0f - expf(-10.0f * dt)));
+
         float flickerFreq = Lerp(8.5f, 22.0f, proximity);
         float waveAmp = Lerp(0.010f, 0.065f, proximity);
         float noiseAmp = Lerp(0.004f, 0.052f, proximity);
@@ -490,6 +562,14 @@ void GameplayState::Draw() {
 
     BeginMode2D(gameCamera.GetCamera());
     renderSystem.RenderWorld(gameMap, player.get(), guard.get());
+
+    // Пил з-під ніг під час спринту
+    for (const auto& p : sprintDust) {
+        float ratio = Clamp(p.life / p.maxLife, 0.0f, 1.0f);
+        float radius = p.size * (1.55f - ratio * 0.55f);
+        DrawCircleV(p.pos, radius, ColorAlpha(Color{ 185, 178, 165, 255 }, ratio * 0.34f));
+    }
+
     if (showDebugOverlay) {
         gameMap.DrawDebug();
         if (player) player->DrawDebug();
@@ -533,7 +613,13 @@ void GameplayState::Draw() {
 
         if (staminaTex.id > 0) {
             Vector2 position = { 20.0f, 400.0f };
-            DrawTextureEx(staminaTex, position, 270.0f, 2.5f, WHITE);
+            Color staminaTint = WHITE;
+            if (player->IsExhausted()) {
+                float exhaustPulse = 0.5f + 0.5f * sinf(shaderTime * 11.0f);
+                staminaTint = ColorLerp(Color{ 255, 110, 110, 255 }, Color{ 230, 35, 45, 255 }, exhaustPulse);
+                position.x += sinf(shaderTime * 48.0f) * 1.2f;
+            }
+            DrawTextureEx(staminaTex, position, 270.0f, 2.5f, staminaTint);
         }
 
         Texture2D cardTex = AssetManager::Instance().GetTexture("card_lives");
@@ -547,27 +633,41 @@ void GameplayState::Draw() {
             else if (player->GetLives() <= 0) frameIndex = 3;
 
             Rectangle cardSourceRec = { (float)frameIndex * frameWidth, 0.0f, frameWidth, frameHeight };
-            Vector2 cardPos = { 55.0f, 105.0f };
             float cardScale = 4.5f;
+            float floatY = sinf(shaderTime * 2.4f) * 3.5f;
+            float tiltAngle = sinf(shaderTime * 1.7f) * 2.5f;
+
+            Vector2 cardCenter = {
+                55.0f + (frameWidth * cardScale) * 0.5f,
+                105.0f + (frameHeight * cardScale) * 0.5f + floatY
+            };
 
             Color cardColor = WHITE;
             Vector2 shakeOffset = { 0.0f, 0.0f };
+
+            if (player->GetLives() == 1) {
+                float dangerBeat = 0.5f + 0.5f * sinf(shaderTime * 7.5f);
+                DrawCircleV(cardCenter, 68.0f, ColorAlpha(RED, 0.14f * dangerBeat));
+                cardColor = ColorLerp(WHITE, Color{ 255, 145, 145, 255 }, dangerBeat * 0.65f);
+            }
 
             if (cardFlickerTimer > 0.0f) {
                 float alpha = (sinf(cardFlickerTimer * 40.0f) > 0.0f) ? 0.3f : 1.0f;
                 cardColor = ColorAlpha(RED, alpha);
                 shakeOffset.x = (float)GetRandomValue(-3, 3);
                 shakeOffset.y = (float)GetRandomValue(-3, 3);
+                tiltAngle += (float)GetRandomValue(-8, 8);
             }
 
             Rectangle cardDestRec = {
-                cardPos.x + shakeOffset.x,
-                cardPos.y + shakeOffset.y,
+                cardCenter.x + shakeOffset.x,
+                cardCenter.y + shakeOffset.y,
                 frameWidth * cardScale,
                 frameHeight * cardScale
             };
+            Vector2 cardOrigin = { cardDestRec.width * 0.5f, cardDestRec.height * 0.5f };
 
-            DrawTexturePro(cardTex, cardSourceRec, cardDestRec, Vector2{ 0.0f, 0.0f }, 0.0f, cardColor);
+            DrawTexturePro(cardTex, cardSourceRec, cardDestRec, cardOrigin, tiltAngle, cardColor);
         }
 
         if (showDebugOverlay) {
@@ -582,7 +682,27 @@ void GameplayState::Draw() {
     }
 
     if (tpFadeAlpha > 0.0f) {
-        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, tpFadeAlpha));
+        float sw = (float)GetScreenWidth();
+        float sh = (float)GetScreenHeight();
+        DrawRectangle(0, 0, (int)sw, (int)sh, Fade(BLACK, tpFadeAlpha));
+
+        // Горизонтальні смуги перешкод при перемиканні камер казино
+        for (int i = 0; i < 6; ++i) {
+            int barY = GetRandomValue(0, (int)sh);
+            int barH = GetRandomValue(2, 6);
+            DrawRectangle(0, barY, (int)sw, barH, ColorAlpha(RAYWHITE, tpFadeAlpha * 0.16f));
+        }
+
+        const char* switchText = TextFormat("SIGNAL SWITCH // CAM-0%d", currentCamNumber);
+        int fontSize = 22;
+        int tw = MeasureText(switchText, fontSize);
+        DrawText(
+            switchText,
+            (int)((sw - tw) * 0.5f) + GetRandomValue(-2, 2),
+            (int)(sh * 0.5f - fontSize * 0.5f),
+            fontSize,
+            ColorAlpha(GOLD, tpFadeAlpha * 0.9f)
+        );
     }
 
     if (isDying) {
@@ -593,6 +713,7 @@ void GameplayState::Draw() {
 
     if (isPaused) {
         DrawPauseMenu();
+        CustomCursor::Draw(exitToMenuButton.isHovered);
     }
 }
 
