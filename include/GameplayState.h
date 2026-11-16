@@ -54,10 +54,16 @@ private:
     int radiusLoc = -1;
     int flickerLoc = -1;
     int ambientLoc = -1;
+    int dangerLoc = -1;
 
     float lightRadius = 260.0f;
     float flickerTimer = 0.0f;
     float currentFlicker = 1.0f;
+    float smoothedNoise = 0.0f;
+    float smoothedDanger = 0.0f;
+    float lightDipTimer = 0.0f;
+    float lightDipDuration = 0.14f;
+    float lightDipDepth = 0.0f;
 
     // --- ПАУЗА ---
     bool isPaused = false;
@@ -70,7 +76,7 @@ private:
     // --- СМЕРТЬ ТА ПЕРЕХІД В GAME OVER ---
     bool isDying = false;
     float deathFadeAlpha = 0.0f;
-    float deathFadeSpeed = 1.2f; // ~0.8 сек червоно-чорного затемнення перед GameOverState
+    float deathFadeSpeed = 1.2f;
 
     bool showDebugOverlay = false;
 

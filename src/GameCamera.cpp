@@ -19,6 +19,11 @@ void GameCamera::AddTrauma(float amount) {
     if (trauma > 1.0f) trauma = 1.0f;
 }
 
+void GameCamera::SetMinTrauma(float minAmount) {
+    if (minAmount > 1.0f) minAmount = 1.0f;
+    if (trauma < minAmount) trauma = minAmount;
+}
+
 void GameCamera::Update(Vector2 targetPos, bool isMoving, bool isSprinting, bool isExhausted, float staminaRatio, float dt) {
     // 1. Розрахунок параметрів похитування (Idle -> Walk -> Sprint)
     float targetSpeed = isMoving ? (isSprinting ? 14.0f : 9.0f) : 2.0f;

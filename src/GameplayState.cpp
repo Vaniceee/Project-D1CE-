@@ -15,13 +15,17 @@ void GameplayState::Init() {
     radiusLoc = GetShaderLocation(lightShader, "lightRadius");
     flickerLoc = GetShaderLocation(lightShader, "flicker");
     ambientLoc = GetShaderLocation(lightShader, "ambientColor");
+    dangerLoc = GetShaderLocation(lightShader, "dangerFactor");
 
     float res[2] = { (float)virtualWidth, (float)virtualHeight };
     SetShaderValue(lightShader, resolutionLoc, res, SHADER_UNIFORM_VEC2);
     SetShaderValue(lightShader, radiusLoc, &lightRadius, SHADER_UNIFORM_FLOAT);
 
-    float ambient[4] = { 0.04f, 0.04f, 0.08f, 1.0f };
+    float ambient[4] = { 0.004f, 0.004f, 0.006f, 1.0f };
     SetShaderValue(lightShader, ambientLoc, ambient, SHADER_UNIFORM_VEC4);
+
+    float initialDanger = 0.0f;
+    SetShaderValue(lightShader, dangerLoc, &initialDanger, SHADER_UNIFORM_FLOAT);
     // ============================================
 
     AssetManager& am = AssetManager::Instance();
@@ -43,8 +47,11 @@ void GameplayState::Init() {
     am.LoadSound("step_wood_3", Config::PATH_STEP_WOOD_3);
     am.LoadSound("step_wood_4", Config::PATH_STEP_WOOD_4);
     am.LoadSound("Breath", "assets/player/Breath.wav");
+    am.LoadSound("card_rip", Config::PATH_SFX_CARD_RIP);
 
     am.LoadTexture("card_lives", Config::PATH_PNG_CARD_LIVES);
+
+    am.LoadMusic("guard_chase", Config::PATH_AUDIO_GUARD_CHASE);
 
     gameMap.Load(Config::PATH_MAP);
 
@@ -82,6 +89,10 @@ void GameplayState::Init() {
     tpFadeAlpha = 0.0f;
     waitForKeysRelease = false;
     wasInTrigger = false;
+    smoothedNoise = 0.0f;
+    smoothedDanger = 0.0f;
+    lightDipTimer = 0.0f;
+    lightDipDepth = 0.0f;
 
     //======================MUSIC======================
     AssetManager::Instance().LoadMusic("ambient", Config::PATH_AUDIO_AMBIENT);
@@ -96,6 +107,9 @@ void GameplayState::Init() {
 
 void GameplayState::Cleanup() {
     StopMusicStream(bgMusic);
+    if (guard) {
+        guard->StopAudio();
+    }
     gameMap.Unload();
 
     if (lightShader.id != 0) {
@@ -122,6 +136,7 @@ void GameplayState::UpdatePauseMenu() {
         if (resumeButton.isHovered) {
             isPaused = false;
             ResumeMusicStream(bgMusic);
+            if (guard) guard->SetAudioPaused(false);
         }
         else if (exitToMenuButton.isHovered) {
             GameManager::Instance().ChangeState(new MainMenuState());
@@ -151,9 +166,11 @@ void GameplayState::Update() {
         isPaused = !isPaused;
         if (isPaused) {
             PauseMusicStream(bgMusic);
+            if (guard) guard->SetAudioPaused(true);
         }
         else {
             ResumeMusicStream(bgMusic);
+            if (guard) guard->SetAudioPaused(false);
         }
     }
 
@@ -222,6 +239,7 @@ void GameplayState::Update() {
             TraceLog(LOG_WARNING, "GAME OVER! Player died.");
             isDying = true;
             deathFadeAlpha = 0.0f;
+            if (guard) guard->StopAudio();
             gameCamera.AddTrauma(0.9f);
             return;
         }
@@ -251,20 +269,82 @@ void GameplayState::Update() {
             }
         }
 
-        // Оновлення камери
         Vector2 desiredTarget = {
             footCollider.x + footCollider.width / 2.0f,
             footCollider.y + footCollider.height / 2.0f
         };
+
+        // === РОЗРАХУНОК БЛИЗЬКОСТІ НПС (СВІТЛО + ТРЯСКА + ЧЕРВОНИЙ КРАЙ) ===
+        float proximity = 0.0f;
+        if (guard) {
+            Rectangle guardFoot = guard->GetFootCollider();
+            Vector2 guardCenter = {
+                guardFoot.x + guardFoot.width * 0.5f,
+                guardFoot.y + guardFoot.height * 0.5f
+            };
+            float distToGuard = Vector2Distance(desiredTarget, guardCenter);
+
+            const float minDist = 42.0f;
+            const float maxDist = 340.0f;
+            float normalizedDist = Clamp((distToGuard - minDist) / (maxDist - minDist), 0.0f, 1.0f);
+            float linearProx = 1.0f - normalizedDist;
+
+            proximity = linearProx * linearProx;
+
+            if (guard->GetCurrentState() == GuardState::CHASE) {
+                proximity = Clamp(proximity * 1.15f, 0.0f, 1.0f);
+            }
+        }
+
+        // Атмосферна тряска камери при зближенні (до ~0.36 trauma, що дає м'яку вібрацію ~0.8 px)
+        if (proximity > 0.05f) {
+            float proximityTrauma = Lerp(0.10f, 0.36f, proximity);
+            gameCamera.SetMinTrauma(proximityTrauma);
+        }
+
+        // Оновлення камери
         float staminaRatio = player->GetCurrentStamina() / player->GetMaxStamina();
         bool effectiveMoving = !isMovementBlocked && player->IsMoving();
         gameCamera.Update(desiredTarget, effectiveMoving, player->IsSprinting(), player->IsExhausted(), staminaRatio, dt);
 
-        // Мерехтіння та передача позиції гравця в шейдер
-        flickerTimer += dt;
-        float noise = (float)GetRandomValue(-10, 10) / 900.0f;
-        currentFlicker = 1.0f + (sinf(flickerTimer * 10.0f) * 0.025f) + noise;
+        // М'яке мерехтіння світла
+        float flickerFreq = Lerp(8.5f, 22.0f, proximity);
+        float waveAmp = Lerp(0.010f, 0.065f, proximity);
+        float noiseAmp = Lerp(0.004f, 0.052f, proximity);
+
+        flickerTimer += dt * flickerFreq;
+        float rawNoise = ((float)GetRandomValue(-100, 100) / 100.0f) * noiseAmp;
+        float noiseBlend = 1.0f - expf(-25.0f * dt);
+        smoothedNoise = Lerp(smoothedNoise, rawNoise, noiseBlend);
+
+        if (lightDipTimer > 0.0f) {
+            lightDipTimer -= dt;
+            if (lightDipTimer < 0.0f) lightDipTimer = 0.0f;
+        }
+        else if (proximity > 0.25f) {
+            float triggerChancePerSec = proximity * 3.2f;
+            if (((float)GetRandomValue(0, 10000) / 10000.0f) < triggerChancePerSec * dt) {
+                lightDipDuration = (float)GetRandomValue(13, 19) / 100.0f;
+                lightDipTimer = lightDipDuration;
+                lightDipDepth = ((float)GetRandomValue(7, 15) / 100.0f) * proximity;
+            }
+        }
+
+        float activeDip = 0.0f;
+        if (lightDipTimer > 0.0f && lightDipDuration > 0.0f) {
+            float dipProgress = 1.0f - (lightDipTimer / lightDipDuration);
+            activeDip = sinf(dipProgress * PI) * lightDipDepth;
+        }
+
+        currentFlicker = 1.0f + (sinf(flickerTimer) * waveAmp) + smoothedNoise - activeDip;
+        currentFlicker = Clamp(currentFlicker, 0.65f, 1.08f);
         SetShaderValue(lightShader, flickerLoc, &currentFlicker, SHADER_UNIFORM_FLOAT);
+
+        // Плавна передача фактора червоного контуру небезпеки в шейдер
+        float dangerBlend = 1.0f - expf(-6.0f * dt);
+        smoothedDanger = Lerp(smoothedDanger, proximity, dangerBlend);
+        SetShaderValue(lightShader, dangerLoc, &smoothedDanger, SHADER_UNIFORM_FLOAT);
+        // ===================================================================
 
         Vector2 playerScreenPos = gameCamera.GetScreenPosition(desiredTarget);
 
@@ -381,7 +461,6 @@ void GameplayState::Draw() {
     // 5. ЕФЕКТ СМЕРТІ ПЕРЕД GAME OVER
     if (isDying) {
         float clampedAlpha = (deathFadeAlpha > 1.0f) ? 1.0f : deathFadeAlpha;
-        // Спочатку спалах червоного, який переходить у чорний
         DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(MAROON, clampedAlpha * 0.45f));
         DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, clampedAlpha));
     }
@@ -396,7 +475,6 @@ void GameplayState::DrawPauseMenu() {
     float screenW = (float)GetScreenWidth();
     float screenH = (float)GetScreenHeight();
 
-    // Напівпрозоре затемнення ігрового світу
     DrawRectangle(0, 0, (int)screenW, (int)screenH, Fade(BLACK, 0.72f));
 
     const char* pauseTitle = "PAUSED";

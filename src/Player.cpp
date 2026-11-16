@@ -19,6 +19,12 @@ void Player::TakeDamage(int damage) {
     isInvincible = true;
     invincibilityTimer = invincibilityDuration;
 
+    Sound ripSound = AssetManager::Instance().GetSound("card_rip");
+    if (ripSound.stream.buffer != nullptr) {
+        SetSoundVolume(ripSound, 0.55f);
+        PlaySound(ripSound);
+    }
+
     TraceLog(LOG_INFO, "PLAYER DAMAGE! Remaining lives: %d", lives);
 }
 
@@ -158,7 +164,7 @@ void Player::Update(const GameMap& gameMap) {
 
     if (isSprinting) {
 
-        currentMoveSpeed *= 1.55f;
+        currentMoveSpeed *= 1.68f;
         currentStamina -= staminaDrainRate * deltaTime;
         if (currentStamina <= 0.0f) {
             currentStamina = 0.0f;

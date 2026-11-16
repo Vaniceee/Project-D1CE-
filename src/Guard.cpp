@@ -1,5 +1,6 @@
 #include "Guard.h"
 #include "Map.h"
+#include "AssetManager.h"
 #include "Logger.h"
 #include "raymath.h"
 #include <cmath>
@@ -14,6 +15,117 @@ Guard::Guard(Vector2 startPos, float startSpeed, float width, float height)
 void Guard::InitPathfinding(const GameMap& gameMap) {
     pathfinder.BuildGrid(gameMap);
     spawnFootPos = GetFootCenter();
+
+    chaseMusic = AssetManager::Instance().GetMusic("guard_chase");
+    hasChaseMusic = (chaseMusic.stream.buffer != nullptr);
+    if (hasChaseMusic) {
+        chaseMusic.looping = true;
+        SetMusicVolume(chaseMusic, 0.0f);
+    }
+}
+
+void Guard::SetAudioPaused(bool paused) {
+    if (!hasChaseMusic) return;
+    if (paused) {
+        PauseMusicStream(chaseMusic);
+    }
+    else if (currentChaseVolume > 0.005f) {
+        ResumeMusicStream(chaseMusic);
+    }
+}
+
+void Guard::StopAudio() {
+    if (!hasChaseMusic) return;
+    StopMusicStream(chaseMusic);
+    currentChaseVolume = 0.0f;
+    isChaseAudioEngaged = false;
+    chaseIntroTimer = 0.0f;
+    chaseAudioSustainTimer = 0.0f;
+}
+
+void Guard::UpdateChaseAudio(float distToPlayer, float dt) {
+    if (!hasChaseMusic) return;
+
+    // 1. Оновлюємо таймер утримання музики після втрати гравця з поля зору
+    bool shouldPlayAudio = false;
+
+    if (currentState == GuardState::CHASE && !isTeleporting) {
+        chaseAudioSustainTimer = chaseAudioSustainDuration;
+        shouldPlayAudio = true;
+    }
+    else if (currentState == GuardState::INVESTIGATE && !isTeleporting && chaseAudioSustainTimer > 0.0f) {
+        chaseAudioSustainTimer -= dt;
+        if (chaseAudioSustainTimer > 0.0f) {
+            shouldPlayAudio = true;
+        }
+    }
+    else if (currentState == GuardState::PATROL) {
+        chaseAudioSustainTimer = 0.0f;
+    }
+
+    // 2. Розрахунок цільової гучності від дистанції до гравця
+    float targetVolume = 0.0f;
+    if (shouldPlayAudio) {
+        if (!isChaseAudioEngaged) {
+            isChaseAudioEngaged = true;
+            chaseIntroTimer = 0.0f; // Запускаємо плавний вхід лише 1 раз на початку погоні
+        }
+
+        float range = maxChaseAudioDistance - attackRadius;
+        float normalizedDist = (range > 1.0f) ? ((distToPlayer - attackRadius) / range) : 0.0f;
+        normalizedDist = Clamp(normalizedDist, 0.0f, 1.0f);
+
+        float proximity = 1.0f - normalizedDist;
+        targetVolume = Lerp(0.15f, 0.85f, proximity);
+
+        // У жовтому стані (поки дограє таймер) робимо звук трохи тихішим
+        if (currentState == GuardState::INVESTIGATE) {
+            targetVolume *= 0.75f;
+        }
+    }
+
+    // 3. Плавна зміна базової гучності (швидше реагує на дистанцію, повільно згасає в кінці)
+    float fadeSpeed = shouldPlayAudio ? chaseFadeInSpeed : chaseFadeOutSpeed;
+    float blendAlpha = 1.0f - expf(-fadeSpeed * dt);
+    currentChaseVolume = Lerp(currentChaseVolume, targetVolume, blendAlpha);
+
+    if (currentChaseVolume > 0.004f || shouldPlayAudio) {
+        if (!IsMusicStreamPlaying(chaseMusic)) {
+            PlayMusicStream(chaseMusic);
+        }
+        UpdateMusicStream(chaseMusic);
+
+        // 4. Одноразова S-крива плавного наростання на старті погоні (не спрацьовує на повторах циклу)
+        chaseIntroTimer += dt;
+        float introT = Clamp(chaseIntroTimer / chaseIntroDuration, 0.0f, 1.0f);
+        float introEnvelope = introT * introT * (3.0f - 2.0f * introT);
+
+        // 5. Мікро-згладжування на стику циклу (0.15с), щоб прибрати клацання без провалу гучності
+        float timePlayed = GetMusicTimePlayed(chaseMusic);
+        float timeLength = GetMusicTimeLength(chaseMusic);
+        float seamEnvelope = 1.0f;
+        const float microSeamFade = 0.15f;
+
+        if (timeLength > 1.0f) {
+            if (timePlayed < microSeamFade) {
+                seamEnvelope = timePlayed / microSeamFade;
+            }
+            else if (timePlayed > timeLength - microSeamFade) {
+                seamEnvelope = (timeLength - timePlayed) / microSeamFade;
+            }
+            seamEnvelope = Clamp(seamEnvelope, 0.0f, 1.0f);
+        }
+
+        SetMusicVolume(chaseMusic, currentChaseVolume * introEnvelope * seamEnvelope);
+    }
+    else {
+        currentChaseVolume = 0.0f;
+        isChaseAudioEngaged = false;
+        chaseIntroTimer = 0.0f;
+        if (IsMusicStreamPlaying(chaseMusic)) {
+            StopMusicStream(chaseMusic);
+        }
+    }
 }
 
 void Guard::RecalculateFootCollider() {
@@ -247,6 +359,7 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
     // 0. Обробка затримки під час переходу НПС через двері/телепорт
     if (isTeleporting) {
         teleportTimer -= dt;
+        UpdateChaseAudio(9999.0f, dt);
         if (teleportTimer <= 0.0f) {
             isTeleporting = false;
             SetPosition(pendingTeleportPos);
@@ -292,8 +405,6 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
     float distToPlayer = Vector2Distance(guardFootCenter, playerFootCenter);
     bool detectedNow = CanDetectPlayer(player, gameMap);
 
-    // Якщо гравець щойно зайшов у телепорт і ще догорає FADING_OUT біля тих самих дверей —
-    // не скидаємо ціль переслідування телепорту
     if (pursuingTeleport && Vector2Distance(playerFootCenter, lastKnownPlayerPos) < 48.0f) {
         detectedNow = false;
     }
@@ -346,6 +457,7 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
         teleportTimer = teleportDuration;
         pendingTeleportPos = newGuardPos;
         currentPath.clear();
+        UpdateChaseAudio(9999.0f, dt);
         GAME_INFO("GUARD", "Guard entering teleport (delay: %.2fs)...", teleportDuration);
         return;
     }
@@ -357,6 +469,9 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
             attackCooldownTimer = attackCooldownDuration;
         }
     }
+
+    // 5. Оновлення звуку погоні
+    UpdateChaseAudio(distToPlayer, dt);
 
     collider.x = position.x + footOffsetX;
     collider.y = position.y + footOffsetY;
@@ -403,7 +518,6 @@ void Guard::UpdatePatrolState(const GameMap& gameMap, float dt) {
         if (currentPath.empty() && pathUpdateTimer <= 0.0f) {
             RequestPathTo(targetPoint, gameMap);
 
-            // Якщо A* повернув порожній шлях — спавн в іншій кімнаті за телепортом
             if (currentPath.empty()) {
                 float bestDist = 1e9f;
                 bool foundExitTrigger = false;

@@ -9,8 +9,9 @@ public:
     void Init(Vector2 startPos, int virtualWidth, int virtualHeight, float zoom = 1.8f);
     void Update(Vector2 targetPos, bool isMoving, bool isSprinting, bool isExhausted, float staminaRatio, float dt);
 
-    // Допоміжний метод для зовнішніх подій (наприклад, удар охоронця)
+    // Допоміжні методи для зовнішніх подій (удар охоронця, наближення небезпеки)
     void AddTrauma(float amount);
+    void SetMinTrauma(float minAmount);
 
     const Camera2D& GetCamera() const { return camera; }
     Vector2 GetScreenPosition(Vector2 worldPos) const;

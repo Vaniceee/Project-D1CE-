@@ -41,7 +41,7 @@ private:
     int lives = 3;
     bool isInvincible = false;
     float invincibilityTimer = 0.0f;
-    float invincibilityDuration = 1.5f;
+    float invincibilityDuration = 1.8f;
 
 
     int activeNudgeY = 0;
@@ -53,8 +53,8 @@ private:
     // Стаміна параметри
     float maxStamina = 100.0f;
     float currentStamina = 100.0f;
-    float staminaDrainRate = 30.0f;
-    float staminaRegenRate = 10.0f;
+    float staminaDrainRate = 15.0f;
+    float staminaRegenRate = 15.0f;
     bool isExhausted = false;
 
 

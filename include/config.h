@@ -20,8 +20,15 @@ namespace Config {
 	//--------ГРАВЕЦЬ
 	constexpr const char* PATH_PNG_PLAYER_SPRITESHEET = "assets/player/PlayerAnimations.png";
 	constexpr const char* PATH_PNG_CARD_LIVES = "assets/player/LifesAce.png";
+	constexpr const char* PATH_SFX_CARD_RIP = "assets/sfx/PaperRip.wav";
 	constexpr const char* PATH_AUDIO_AMBIENT = "assets/music/ambient_1.wav";
 	constexpr const char* PATH_SHADER_LIGHTING = "assets/shaders/lighting.frag";
+
+
+	//--------ОХОРОНЕЦЬ (NPC)
+	constexpr const char* PATH_AUDIO_GUARD_CHASE = "assets/music/ChaseSFX.wav";
+
+
 
 	constexpr const char* PATH_MAP = "assets/map/CasinoMap.tmj"; // мапа в tmj
 
