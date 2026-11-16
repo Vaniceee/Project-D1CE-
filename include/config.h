@@ -10,7 +10,9 @@ namespace Config {
 	// ШАБЛОН ДЛЯ ГОЛОВНОГО МЕНЮ
 	constexpr const char* PATH_PNG_MENU_BG = "assets/menu/MainMenuBG.png";
 	constexpr const char* PATH_AUDIO_MENU_MUSIC = "assets/menu/MenuTheme.wav";
-	
+	constexpr const char* PATH_SHADER_MENU = "assets/shaders/menu.frag";
+
+
 	// Конфігурація кроків
 	constexpr const char* PATH_STEP_WOOD_1 = "assets/sfx/stp1.wav";
 	constexpr const char* PATH_STEP_WOOD_2 = "assets/sfx/stp2.wav";
