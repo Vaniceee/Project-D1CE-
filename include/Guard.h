@@ -21,6 +21,7 @@ public:
     void Update() override {}
     void Update(Player& player, const GameMap& gameMap, float dt);
     void Draw() override;
+    void DrawDebug() const;
 
     void OnPlayerTeleported(Vector2 enteredTriggerCenter);
     void SetAudioPaused(bool paused);
@@ -58,13 +59,13 @@ private:
     bool hasChaseMusic = false;
     bool isChaseAudioEngaged = false;
     float chaseIntroTimer = 0.0f;
-    float chaseIntroDuration = 1.6f;       // Плавне наростання гучності на старті погоні (сек)
+    float chaseIntroDuration = 1.6f;
     float chaseAudioSustainTimer = 0.0f;
-    float chaseAudioSustainDuration = 3.0f; // Скільки секунд музика грає після переходу в жовтий стан
+    float chaseAudioSustainDuration = 3.0f;
     float currentChaseVolume = 0.0f;
     float maxChaseAudioDistance = 360.0f;
     float chaseFadeInSpeed = 4.0f;
-    float chaseFadeOutSpeed = 1.1f;        // Повільне згасання після завершення
+    float chaseFadeOutSpeed = 1.1f;
 
     // --- НАВІГАЦІЯ A* ТА ТЕЛЕПОРТИ ---
     AStar pathfinder;

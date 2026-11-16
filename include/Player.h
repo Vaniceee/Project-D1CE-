@@ -12,6 +12,7 @@ public:
     void Update() override {}
     void Update(const GameMap& gameMap);
     void Draw() override;
+    void DrawDebug() const;
 
     PlayerDirection GetCurrentDirection() const;
     Rectangle GetFootCollider() const;
@@ -24,18 +25,16 @@ public:
     bool IsInvincible() const { return isInvincible; }
     void TakeDamage(int damage = 1);
 
-
     // Геттери для стаміни
     float GetCurrentStamina() const { return currentStamina; }
     float GetMaxStamina() const { return maxStamina; }
-    bool IsMoving() const { return isMoving; }           
-    bool IsSprinting() const { return isSprinting; }     
+    bool IsMoving() const { return isMoving; }
+    bool IsSprinting() const { return isSprinting; }
     bool IsExhausted() const { return isExhausted; }
 
 private:
     float currentSpeed;
     float scale = 1.0f;
-
 
     //------Життя та урон---------
     int lives = 3;
@@ -43,11 +42,10 @@ private:
     float invincibilityTimer = 0.0f;
     float invincibilityDuration = 1.8f;
 
-
     int activeNudgeY = 0;
     int activeNudgeX = 0;
 
-    bool isMoving = false;       
+    bool isMoving = false;
     bool isSprinting = false;
 
     // Стаміна параметри
@@ -56,7 +54,6 @@ private:
     float staminaDrainRate = 15.0f;
     float staminaRegenRate = 15.0f;
     bool isExhausted = false;
-
 
     // Розміри та зсув для коллайдера в ногах
     float footBoxWidth;
@@ -71,23 +68,22 @@ private:
     float frameWidth = 32.0f;
     float frameHeight = 64.0f;
     float animTimer = 0.0f;
-    float frameSpeed = 0.12f; // Секунд на один кадр
+    float frameSpeed = 0.12f;
 
     void RecalculateFootCollider();
 
     // --- ЗВУКИ КРОКІВ ---
     float stepTimer = 0.0f;
-    float stepIntervalWalk = 0.95f; 
-    float stepIntervalRun = 0.48f; 
+    float stepIntervalWalk = 0.95f;
+    float stepIntervalRun = 0.48f;
 
     void PlayFootstepSound(bool isSprinting);
 
     // --- ПАРАМЕТРИ ЗВУКУ ВІДДИШКИ ---
     bool isPlayingBreath = false;
-    float currentBreathVolume = 0.0f; // Поточна гучність (0.0f .. 0.5f)
-    float targetBreathVolume = 0.0f;  // Цільова гучність (0.5f або 0.0f)
-    float breathFadeSpeed = 2.5f;     // Швидкість плавного затухання/наростання
+    float currentBreathVolume = 0.0f;
+    float targetBreathVolume = 0.0f;
+    float breathFadeSpeed = 2.5f;
 
     void UpdateBreathingSound();
-
 };

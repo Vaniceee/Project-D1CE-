@@ -28,39 +28,33 @@ void Player::TakeDamage(int damage) {
     TraceLog(LOG_INFO, "PLAYER DAMAGE! Remaining lives: %d", lives);
 }
 
-
 void Player::UpdateBreathingSound() {
     Sound breathSound = AssetManager::Instance().GetSound("Breath");
     if (breathSound.stream.buffer == nullptr) return;
 
     float dt = GetFrameTime();
-    float staminaRatio = currentStamina / maxStamina;   
+    float staminaRatio = currentStamina / maxStamina;
     bool shouldPlay = isExhausted || (staminaRatio < 0.35f);
-    float maxVolume = 0.140f; // Максимальна гучність задишки
-    
+    float maxVolume = 0.140f;
 
     if (shouldPlay) {
-        
         if (!IsSoundPlaying(breathSound)) {
-            currentBreathVolume = maxVolume;                  
+            currentBreathVolume = maxVolume;
             SetSoundVolume(breathSound, currentBreathVolume);
             PlaySound(breathSound);
         }
         else {
-            
             currentBreathVolume = maxVolume;
             SetSoundVolume(breathSound, currentBreathVolume);
         }
     }
     else {
-        
         if (currentBreathVolume > 0.01f) {
-            float blendAlpha = 1.0f - expf(-3.5f * dt); 
+            float blendAlpha = 1.0f - expf(-3.5f * dt);
             currentBreathVolume = Lerp(currentBreathVolume, 0.0f, blendAlpha);
             SetSoundVolume(breathSound, currentBreathVolume);
         }
         else {
-            
             if (IsSoundPlaying(breathSound)) {
                 StopSound(breathSound);
             }
@@ -69,9 +63,7 @@ void Player::UpdateBreathingSound() {
     }
 }
 
-
 void Player::RecalculateFootCollider() {
-    // Масштабуємо базову ширину та висоту персонажа
     float scaledWidth = frameWidth * scale;
     float scaledHeight = frameHeight * scale;
 
@@ -86,28 +78,22 @@ void Player::RecalculateFootCollider() {
 
 void Player::SetScale(float newScale) {
     scale = newScale;
-    RecalculateFootCollider(); // Автоматично оновлюємо розмір хитбокса при зміні скейлу
+    RecalculateFootCollider();
 }
 
 Rectangle Player::GetFootCollider() const {
     return { position.x + footOffsetX, position.y + footOffsetY, footBoxWidth, footBoxHeight };
 }
 
-
-
 void Player::PlayFootstepSound(bool isSprinting) {
     AssetManager& am = AssetManager::Instance();
 
-    // 1. Випадковий вибір одного з 4 звуків кроків
     int soundIndex = GetRandomValue(1, 4);
     std::string soundKey = "step_wood_" + std::to_string(soundIndex);
     Sound stepSound = am.GetSound(soundKey);
 
     if (stepSound.stream.buffer != nullptr) {
-        // 2. Глибокий pitch (0.82f) з мікро-варіацією (-0.04f ... +0.04f)
         float randomPitch = 0.82f + ((float)GetRandomValue(-4, 4) / 100.0f);
-
-        // 3. Варіація гучності: при спринті гучніше (0.60f), при ходьбі тихіше (0.35f)
         float baseVolume = isSprinting ? 0.65f : 0.45f;
         float randomVolume = baseVolume + ((float)GetRandomValue(-3, 3) / 100.0f);
 
@@ -121,7 +107,6 @@ void Player::Update(const GameMap& gameMap) {
     Vector2 moveDir = InputManager::GetMovementDirection();
     float deltaTime = GetFrameTime();
 
-    // Обробка таймера невразливості
     if (isInvincible) {
         invincibilityTimer -= deltaTime;
         if (invincibilityTimer <= 0.0f) {
@@ -130,11 +115,8 @@ void Player::Update(const GameMap& gameMap) {
         }
     }
 
-
-
-    // ---- ОНОВЛЕННЯ АНІМАЦІЇ ТА ЗВУКІВ КРОКІВ ----
     if (isMoving) {
-        frameSpeed = isSprinting ? 0.075f : 0.135f; 
+        frameSpeed = isSprinting ? 0.075f : 0.135f;
 
         animTimer += deltaTime;
         if (animTimer >= frameSpeed) {
@@ -142,7 +124,6 @@ void Player::Update(const GameMap& gameMap) {
             int prevFrame = currentFrame;
             currentFrame = (currentFrame + 1) % totalFrames;
 
-            
             if ((currentFrame == 2 || currentFrame == 6) && prevFrame != currentFrame) {
                 PlayFootstepSound(isSprinting);
             }
@@ -157,13 +138,11 @@ void Player::Update(const GameMap& gameMap) {
         }
     }
 
-    // ---- СПРИНТ-------------
     isMoving = (moveDir.x != 0.0f or moveDir.y != 0.0f);
     float currentMoveSpeed = speed;
     isSprinting = InputManager::IsSprintPressed() && isMoving && !isExhausted;
 
     if (isSprinting) {
-
         currentMoveSpeed *= 1.68f;
         currentStamina -= staminaDrainRate * deltaTime;
         if (currentStamina <= 0.0f) {
@@ -182,23 +161,15 @@ void Player::Update(const GameMap& gameMap) {
         }
     }
 
-    
-
-    // --- ПОЕТАПНИЙ РУХ (SEPARATED-AXIS MOVEMENT) ДЛЯ КОВЗАННЯ ---
     float frameSpeed = currentMoveSpeed * deltaTime;
-    const float nudgeTolerance = 13.0f; // Поріг у пікселях для автоматичного виштовхування з кутів
+    const float nudgeTolerance = 13.0f;
 
-    // =========================================================================
-    // 1. РУХ ТА КОЛІЗІЇ ПО ОСІ X (З ВИШТОВХУВАННЯМ ПО Y)
-    // =========================================================================
     if (moveDir.x != 0.0f) {
         position.x += moveDir.x * frameSpeed;
 
         if (gameMap.CheckWallCollision(GetFootCollider())) {
-            // Скасовуємо спробу руху по X
             position.x -= moveDir.x * frameSpeed;
 
-            // ЯКЩО СТАН ЩЕ НЕ ЗАФІКСОВАНО: шукаємо напрямок виштовхування
             if (activeNudgeY == 0) {
                 Rectangle testUp = GetFootCollider();
                 testUp.y -= nudgeTolerance;
@@ -212,44 +183,36 @@ void Player::Update(const GameMap& gameMap) {
                 bool canPassDown = !gameMap.CheckWallCollision(testDown);
 
                 if (canPassUp && !canPassDown) {
-                    activeNudgeY = -1; // Блокуємо стан: тільки ВГОРУ
+                    activeNudgeY = -1;
                 }
                 else if (canPassDown && !canPassUp) {
-                    activeNudgeY = 1;  // Блокуємо стан: тільки ВНИЗ
+                    activeNudgeY = 1;
                 }
             }
 
-            // ЗАСТОСУВАННЯ ЗАФІКСОВАНОГО СТАНУ
             if (activeNudgeY == -1) {
-                position.y -= frameSpeed; // Примусово виштовхуємо вгору
-                moveDir.y = 0.0f;         // Гасимо будь-який інпут вниз
+                position.y -= frameSpeed;
+                moveDir.y = 0.0f;
             }
             else if (activeNudgeY == 1) {
-                position.y += frameSpeed; // Примусово виштовхуємо вниз
-                moveDir.y = 0.0f;         // Гасимо будь-який інпут вгору
+                position.y += frameSpeed;
+                moveDir.y = 0.0f;
             }
         }
         else {
-            // Якщо рух по X пройшов без колізій — скидаємо фіксацію стану
             activeNudgeY = 0;
         }
     }
     else {
-        // Якщо гравець зупинив рух по X — скидаємо стан
         activeNudgeY = 0;
     }
 
-    // =========================================================================
-    // 2. РУХ ТА КОЛІЗІЇ ПО ОСІ Y (З ВИШТОВХУВАННЯМ ПО X)
-    // =========================================================================
     if (moveDir.y != 0.0f) {
         position.y += moveDir.y * frameSpeed;
 
         if (gameMap.CheckWallCollision(GetFootCollider())) {
-            // Скасовуємо спробу руху по Y
             position.y -= moveDir.y * frameSpeed;
 
-            // ЯКЩО СТАН ЩЕ НЕ ЗАФІКСОВАНО: шукаємо напрямок виштовхування
             if (activeNudgeX == 0) {
                 Rectangle testLeft = GetFootCollider();
                 testLeft.x -= nudgeTolerance;
@@ -263,83 +226,71 @@ void Player::Update(const GameMap& gameMap) {
                 bool canPassRight = !gameMap.CheckWallCollision(testRight);
 
                 if (canPassLeft && !canPassRight) {
-                    activeNudgeX = -1; // Блокуємо стан: тільки ЛІВОРУЧ
+                    activeNudgeX = -1;
                 }
                 else if (canPassRight && !canPassLeft) {
-                    activeNudgeX = 1;  // Блокуємо стан: тільки ПРАВОРУЧ
+                    activeNudgeX = 1;
                 }
             }
 
-            // ЗАСТОСУВАННЯ ЗАФІКСОВАНОГО СТАНУ
             if (activeNudgeX == -1) {
-                position.x -= frameSpeed; // Примусово виштовхуємо ліворуч
-                moveDir.x = 0.0f;         // Гасимо будь-який інпут праворуч
+                position.x -= frameSpeed;
+                moveDir.x = 0.0f;
             }
             else if (activeNudgeX == 1) {
-                position.x += frameSpeed; // Примусово виштовхуємо праворуч
-                moveDir.x = 0.0f;         // Гасимо будь-який інпут ліворуч
+                position.x += frameSpeed;
+                moveDir.x = 0.0f;
             }
         }
         else {
-            // Якщо рух по Y пройшов без колізій — скидаємо фіксацію стану
             activeNudgeX = 0;
         }
     }
     else {
-        // Якщо гравець зупинив рух по Y — скидаємо стан
         activeNudgeX = 0;
     }
 
     UpdateBreathingSound();
 
-    // Оновлюємо внутрішній коллайдер після фінального коригування позиції
     collider.x = position.x + footOffsetX;
     collider.y = position.y + footOffsetY;
 
- // Шаблон взаємодії
     if (InputManager::IsInteractPressed()) {
         // Дія взаємодії
     }
-
 }
-   
-
 
 void Player::Draw() {
-
-
     Color drawTint = WHITE;
     if (isInvincible) {
         float alpha = (sinf(GetTime() * 20.0f) > 0.0f) ? 0.3f : 0.8f;
         drawTint = ColorAlpha(WHITE, alpha);
     }
-    
+
     if (texture.id > 0) {
         PlayerDirection dir = GetCurrentDirection();
         int rowIndex = 0;
         bool flipH = false;
 
-        
         switch (dir) {
         case PlayerDirection::Up:
-            rowIndex = isMoving ? 4 : 1; // 1: Idle Up, 4: Walk Up
+            rowIndex = isMoving ? 4 : 1;
             break;
         case PlayerDirection::Left:
-            rowIndex = isMoving ? 5 : 2; // 2: Idle Side, 5: Walk Side
-            flipH = true;               
+            rowIndex = isMoving ? 5 : 2;
+            flipH = true;
             break;
         case PlayerDirection::Right:
-            rowIndex = isMoving ? 5 : 2; // 2: Idle Side, 5: Walk Side
+            rowIndex = isMoving ? 5 : 2;
             flipH = false;
             break;
         case PlayerDirection::Down:
         case PlayerDirection::None:
         default:
-            rowIndex = isMoving ? 3 : 0; // 0: Idle Down, 3: Walk Down
+            rowIndex = isMoving ? 3 : 0;
             break;
         }
 
-       
         Rectangle sourceRec = {
             (float)currentFrame * frameWidth,
             (float)rowIndex * frameHeight,
@@ -361,9 +312,12 @@ void Player::Draw() {
     else {
         DrawRectangleRec({ position.x, position.y, collider.width / 0.6f, collider.height / 0.3f }, BLUE);
     }
+}
 
-    // Дебаг: червоний контур хитбокса у ногах
-   // DrawRectangleLinesEx(GetFootCollider(), 1.0f, RED);
+void Player::DrawDebug() const {
+    Rectangle foot = GetFootCollider();
+    DrawRectangleRec(foot, ColorAlpha(RED, 0.25f));
+    DrawRectangleLinesEx(foot, 1.0f, RED);
 }
 
 PlayerDirection Player::GetCurrentDirection() const {

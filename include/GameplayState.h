@@ -47,7 +47,7 @@ private:
 
     RenderTexture2D targetTexture = { 0 };
 
-    // --- ШЕЙДЕР ОСВІТЛЕННЯ ---
+    // --- ШЕЙДЕР ОСВІТЛЕННЯ ТА СТАНУ ГРАВЦЯ ---
     Shader lightShader = { 0 };
     int playerPosLoc = -1;
     int resolutionLoc = -1;
@@ -55,15 +55,27 @@ private:
     int flickerLoc = -1;
     int ambientLoc = -1;
     int dangerLoc = -1;
+    int exhaustionLoc = -1;
+    int panicLoc = -1;
+    int timeLoc = -1;
 
-    float lightRadius = 260.0f;
+    float lightRadius = 280.0f;
     float flickerTimer = 0.0f;
     float currentFlicker = 1.0f;
     float smoothedNoise = 0.0f;
     float smoothedDanger = 0.0f;
+    float smoothedExhaustion = 0.0f;
+    float smoothedPanic = 0.0f;
+    float damageImpulse = 0.0f;
+    float shaderTime = 0.0f;
     float lightDipTimer = 0.0f;
     float lightDipDuration = 0.14f;
     float lightDipDepth = 0.0f;
+
+    // Мікро-інерція джерела світла
+    Vector2 lightWorldPos = { 0.0f, 0.0f };
+    Vector2 lightVelocity = { 0.0f, 0.0f };
+    bool isLightPosInitialized = false;
 
     // --- ПАУЗА ---
     bool isPaused = false;

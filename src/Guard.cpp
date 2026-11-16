@@ -46,7 +46,6 @@ void Guard::StopAudio() {
 void Guard::UpdateChaseAudio(float distToPlayer, float dt) {
     if (!hasChaseMusic) return;
 
-    // 1. Оновлюємо таймер утримання музики після втрати гравця з поля зору
     bool shouldPlayAudio = false;
 
     if (currentState == GuardState::CHASE && !isTeleporting) {
@@ -63,12 +62,11 @@ void Guard::UpdateChaseAudio(float distToPlayer, float dt) {
         chaseAudioSustainTimer = 0.0f;
     }
 
-    // 2. Розрахунок цільової гучності від дистанції до гравця
     float targetVolume = 0.0f;
     if (shouldPlayAudio) {
         if (!isChaseAudioEngaged) {
             isChaseAudioEngaged = true;
-            chaseIntroTimer = 0.0f; // Запускаємо плавний вхід лише 1 раз на початку погоні
+            chaseIntroTimer = 0.0f;
         }
 
         float range = maxChaseAudioDistance - attackRadius;
@@ -78,13 +76,11 @@ void Guard::UpdateChaseAudio(float distToPlayer, float dt) {
         float proximity = 1.0f - normalizedDist;
         targetVolume = Lerp(0.15f, 0.85f, proximity);
 
-        // У жовтому стані (поки дограє таймер) робимо звук трохи тихішим
         if (currentState == GuardState::INVESTIGATE) {
             targetVolume *= 0.75f;
         }
     }
 
-    // 3. Плавна зміна базової гучності (швидше реагує на дистанцію, повільно згасає в кінці)
     float fadeSpeed = shouldPlayAudio ? chaseFadeInSpeed : chaseFadeOutSpeed;
     float blendAlpha = 1.0f - expf(-fadeSpeed * dt);
     currentChaseVolume = Lerp(currentChaseVolume, targetVolume, blendAlpha);
@@ -95,12 +91,10 @@ void Guard::UpdateChaseAudio(float distToPlayer, float dt) {
         }
         UpdateMusicStream(chaseMusic);
 
-        // 4. Одноразова S-крива плавного наростання на старті погоні (не спрацьовує на повторах циклу)
         chaseIntroTimer += dt;
         float introT = Clamp(chaseIntroTimer / chaseIntroDuration, 0.0f, 1.0f);
         float introEnvelope = introT * introT * (3.0f - 2.0f * introT);
 
-        // 5. Мікро-згладжування на стику циклу (0.15с), щоб прибрати клацання без провалу гучності
         float timePlayed = GetMusicTimePlayed(chaseMusic);
         float timeLength = GetMusicTimeLength(chaseMusic);
         float seamEnvelope = 1.0f;
@@ -235,12 +229,10 @@ bool Guard::CanDetectPlayer(const Player& player, const GameMap& gameMap) const 
         return false;
     }
 
-    // 1. Мікро-зона дотику зі спини
     if (dist <= proximityRadius) {
         return true;
     }
 
-    // 2. Зона слуху кроків
     if (player.IsSprinting() && dist <= hearingSprintRadius) {
         return true;
     }
@@ -248,7 +240,6 @@ bool Guard::CanDetectPlayer(const Player& player, const GameMap& gameMap) const 
         return true;
     }
 
-    // 3. Конус зору (80° у патрулі, 150° у погоні)
     if (dist <= viewDistance) {
         Vector2 forward = { cosf(facingAngle), sinf(facingAngle) };
         Vector2 toPlayer = Vector2Normalize(Vector2Subtract(playerCenter, guardCenter));
@@ -356,7 +347,6 @@ void Guard::FollowPath(float moveSpeed, const GameMap& gameMap, float dt) {
 }
 
 void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
-    // 0. Обробка затримки під час переходу НПС через двері/телепорт
     if (isTeleporting) {
         teleportTimer -= dt;
         UpdateChaseAudio(9999.0f, dt);
@@ -409,7 +399,6 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
         detectedNow = false;
     }
 
-    // 1. Логіка переходів FSM з урахуванням інерції погоні
     if (detectedNow) {
         pursuingTeleport = false;
         returningViaTeleport = false;
@@ -437,7 +426,6 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
         }
     }
 
-    // 2. Виконання активного стану
     switch (currentState) {
     case GuardState::PATROL:
         UpdatePatrolState(gameMap, dt);
@@ -450,7 +438,6 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
         break;
     }
 
-    // 3. Перевірка телепорту для самого НПС (запуск із затримкою)
     Vector2 newGuardPos;
     if (teleportCooldown <= 0.0f && gameMap.TryGetTeleportDestination(GetFootCollider(), position, newGuardPos)) {
         isTeleporting = true;
@@ -462,7 +449,6 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
         return;
     }
 
-    // 4. Атака
     if (distToPlayer <= attackRadius && attackCooldownTimer <= 0.0f) {
         if (!player.IsInvincible()) {
             player.TakeDamage(1);
@@ -470,7 +456,6 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
         }
     }
 
-    // 5. Оновлення звуку погоні
     UpdateChaseAudio(distToPlayer, dt);
 
     collider.x = position.x + footOffsetX;
@@ -480,7 +465,6 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
 void Guard::UpdatePatrolState(const GameMap& gameMap, float dt) {
     Vector2 guardCenter = GetFootCenter();
 
-    // 1. Якщо НПС застряг в іншій кімнаті і йде до вихідного телепорту
     if (returningViaTeleport) {
         float distToDoor = Vector2Distance(guardCenter, returnTriggerPos);
         if (distToDoor > 3.0f && CanMoveDirectlyTo(guardCenter, returnTriggerPos, gameMap)) {
@@ -502,7 +486,6 @@ void Guard::UpdatePatrolState(const GameMap& gameMap, float dt) {
         return;
     }
 
-    // 2. Звичайне повернення на точку спавну
     Vector2 targetPoint = spawnFootPos;
 
     if (Vector2Distance(guardCenter, targetPoint) > 12.0f) {
@@ -640,7 +623,9 @@ void Guard::Draw() {
     }
 
     DrawRectangleRec({ position.x, position.y, collider.width * scale, collider.height * scale }, guardColor);
+}
 
+void Guard::DrawDebug() const {
     Vector2 center = GetFootCenter();
 
     // 1. Конус огляду (динамічно розширюється з 80° до 150° у погоні)
@@ -652,7 +637,8 @@ void Guard::Draw() {
     DrawCircleSector(center, viewDistance, startAngleDeg, endAngleDeg, 24, coneColor);
     DrawCircleSectorLines(center, viewDistance, startAngleDeg, endAngleDeg, 24, ColorAlpha(YELLOW, 0.45f));
 
-    // 2. Зона слуху кроків (115 px), дотику (38 px) та атаки (42 px)
+    // 2. Зони слуху кроків (115 px ходьба, 175 px біг), дотику (38 px) та атаки (42 px)
+    DrawCircleLinesV(center, hearingSprintRadius, ColorAlpha(VIOLET, 0.22f));
     DrawCircleLinesV(center, hearingWalkRadius, ColorAlpha(SKYBLUE, 0.25f));
     DrawCircleLinesV(center, proximityRadius, ColorAlpha(ORANGE, 0.35f));
     DrawCircleLinesV(center, attackRadius, ColorAlpha(RED, 0.6f));

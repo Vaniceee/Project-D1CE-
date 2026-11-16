@@ -257,7 +257,6 @@ bool GameMap::TryGetTeleportDestination(Rectangle playerFootHitbox, Vector2 play
     return false;
 }
 
-
 bool GameMap::TryGetActiveTriggerCenter(Rectangle footHitbox, Vector2& outTriggerCenter) const {
     for (size_t i = 0; i < data.triggers.size(); ++i) {
         if (CheckCollisionRecs(footHitbox, data.triggers[i])) {
@@ -270,6 +269,7 @@ bool GameMap::TryGetActiveTriggerCenter(Rectangle footHitbox, Vector2& outTrigge
     }
     return false;
 }
+
 //------------ПОШУК ТРИГЕРУ ДВЕРЕЙ В КІМНАТІ ДЛЯ НПС------------------
 std::vector<Vector2> GameMap::GetAllTriggerCenters() const {
     std::vector<Vector2> centers;

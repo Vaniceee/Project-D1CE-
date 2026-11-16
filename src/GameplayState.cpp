@@ -7,7 +7,7 @@
 void GameplayState::Init() {
     targetTexture = LoadRenderTexture(virtualWidth, virtualHeight);
 
-    // === 1. ІНІЦІАЛІЗАЦІЯ ШЕЙДЕРА ОСВІТЛЕННЯ ===
+    // === 1. ІНІЦІАЛІЗАЦІЯ ШЕЙДЕРА ОСВІТЛЕННЯ ТА СТАНУ ===
     lightShader = LoadShader(0, Config::PATH_SHADER_LIGHTING);
 
     playerPosLoc = GetShaderLocation(lightShader, "playerScreenPos");
@@ -16,6 +16,9 @@ void GameplayState::Init() {
     flickerLoc = GetShaderLocation(lightShader, "flicker");
     ambientLoc = GetShaderLocation(lightShader, "ambientColor");
     dangerLoc = GetShaderLocation(lightShader, "dangerFactor");
+    exhaustionLoc = GetShaderLocation(lightShader, "exhaustionFactor");
+    panicLoc = GetShaderLocation(lightShader, "panicFactor");
+    timeLoc = GetShaderLocation(lightShader, "time");
 
     float res[2] = { (float)virtualWidth, (float)virtualHeight };
     SetShaderValue(lightShader, resolutionLoc, res, SHADER_UNIFORM_VEC2);
@@ -24,9 +27,12 @@ void GameplayState::Init() {
     float ambient[4] = { 0.004f, 0.004f, 0.006f, 1.0f };
     SetShaderValue(lightShader, ambientLoc, ambient, SHADER_UNIFORM_VEC4);
 
-    float initialDanger = 0.0f;
-    SetShaderValue(lightShader, dangerLoc, &initialDanger, SHADER_UNIFORM_FLOAT);
-    // ============================================
+    float zeroVal = 0.0f;
+    SetShaderValue(lightShader, dangerLoc, &zeroVal, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(lightShader, exhaustionLoc, &zeroVal, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(lightShader, panicLoc, &zeroVal, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(lightShader, timeLoc, &zeroVal, SHADER_UNIFORM_FLOAT);
+    // ====================================================
 
     AssetManager& am = AssetManager::Instance();
 
@@ -58,6 +64,14 @@ void GameplayState::Init() {
     // 1. Спавн гравця з мапи
     Vector2 startPos = gameMap.GetPlayerSpawn();
     player = std::make_unique<Player>(startPos, 112.0f, 32.0f, 64.0f, am.GetTexture("player_spritesheet"), 1.45f);
+
+    Rectangle startFoot = player->GetFootCollider();
+    lightWorldPos = {
+        startFoot.x + startFoot.width * 0.5f,
+        startFoot.y + startFoot.height * 0.5f
+    };
+    lightVelocity = { 0.0f, 0.0f };
+    isLightPosInitialized = true;
 
     // 2. Спавн охоронця з мапи
     const auto& guardSpawns = gameMap.GetGuardSpawns();
@@ -91,6 +105,10 @@ void GameplayState::Init() {
     wasInTrigger = false;
     smoothedNoise = 0.0f;
     smoothedDanger = 0.0f;
+    smoothedExhaustion = 0.0f;
+    smoothedPanic = 0.0f;
+    damageImpulse = 0.0f;
+    shaderTime = 0.0f;
     lightDipTimer = 0.0f;
     lightDipDepth = 0.0f;
 
@@ -148,7 +166,6 @@ void GameplayState::UpdatePauseMenu() {
 void GameplayState::Update() {
     float dt = GetFrameTime();
 
-    // 1. Обробка смерті гравця та перехід у GameOverState
     if (isDying) {
         UpdateMusicStream(bgMusic);
         deathFadeAlpha += deathFadeSpeed * dt;
@@ -161,7 +178,6 @@ void GameplayState::Update() {
         return;
     }
 
-    // 2. Перемикання паузи по клавіші ESC (якщо не триває телепорт)
     if (InputManager::IsPausePressed() && tpPhase == TeleportPhase::NONE) {
         isPaused = !isPaused;
         if (isPaused) {
@@ -185,6 +201,7 @@ void GameplayState::Update() {
 
     if (player) {
         UpdateMusicStream(bgMusic);
+        shaderTime += dt;
 
         Vector2 currentInputDir = InputManager::GetMovementDirection();
         bool anyMoveKeyPressed = (currentInputDir.x != 0.0f || currentInputDir.y != 0.0f);
@@ -193,12 +210,19 @@ void GameplayState::Update() {
             waitForKeysRelease = false;
         }
 
-        // Обробка фаз переходу між локаціями
         if (tpPhase == TeleportPhase::FADING_OUT) {
             tpFadeAlpha += tpFadeSpeed * dt;
             if (tpFadeAlpha >= 1.0f) {
                 tpFadeAlpha = 1.0f;
                 player->SetPosition(pendingTeleportPos);
+
+                Rectangle newFoot = player->GetFootCollider();
+                lightWorldPos = {
+                    newFoot.x + newFoot.width * 0.5f,
+                    newFoot.y + newFoot.height * 0.5f
+                };
+                lightVelocity = { 0.0f, 0.0f };
+
                 tpPhase = TeleportPhase::FADING_IN;
             }
         }
@@ -216,11 +240,11 @@ void GameplayState::Update() {
             player->Update(gameMap);
         }
 
-        // === ЛОГІКА АНІМАЦІЇ UI КАРТИ ЖИТТІВ ===
         int currentLives = player->GetLives();
         if (currentLives < lastPlayerLives) {
             cardFlickerTimer = cardFlickerDuration;
             lastPlayerLives = currentLives;
+            damageImpulse = 1.0f;
             gameCamera.AddTrauma(0.55f);
         }
 
@@ -228,13 +252,16 @@ void GameplayState::Update() {
             cardFlickerTimer -= dt;
             if (cardFlickerTimer < 0.0f) cardFlickerTimer = 0.0f;
         }
-        // ========================================
+
+        if (damageImpulse > 0.0f) {
+            damageImpulse -= dt * 1.4f;
+            if (damageImpulse < 0.0f) damageImpulse = 0.0f;
+        }
 
         if (guard) {
             guard->Update(*player, gameMap, dt);
         }
 
-        // Перевірка смерті гравця (коли ХП <= 0)
         if (player->GetLives() <= 0 && !isDying) {
             TraceLog(LOG_WARNING, "GAME OVER! Player died.");
             isDying = true;
@@ -246,7 +273,6 @@ void GameplayState::Update() {
 
         Rectangle footCollider = player->GetFootCollider();
 
-        // Оновлення тригерів та запуск переходу при вході в двері
         gameMap.UpdateTriggers(footCollider);
         bool isInTriggerNow = !gameMap.GetCurrentTriggerMessage().empty();
 
@@ -274,8 +300,35 @@ void GameplayState::Update() {
             footCollider.y + footCollider.height / 2.0f
         };
 
-        // === РОЗРАХУНОК БЛИЗЬКОСТІ НПС (СВІТЛО + ТРЯСКА + ЧЕРВОНИЙ КРАЙ) ===
+        // === МІКРО-ІНЕРЦІЯ ДЖЕРЕЛА СВІТЛА ===
+        if (!isLightPosInitialized) {
+            lightWorldPos = desiredTarget;
+            isLightPosInitialized = true;
+        }
+        else {
+            const float stiffness = 175.0f;
+            const float damping = 18.0f;
+
+            Vector2 displacement = Vector2Subtract(desiredTarget, lightWorldPos);
+            Vector2 accel = Vector2Subtract(
+                Vector2Scale(displacement, stiffness),
+                Vector2Scale(lightVelocity, damping)
+            );
+
+            lightVelocity = Vector2Add(lightVelocity, Vector2Scale(accel, dt));
+            lightWorldPos = Vector2Add(lightWorldPos, Vector2Scale(lightVelocity, dt));
+
+            Vector2 offsetFromPlayer = Vector2Subtract(lightWorldPos, desiredTarget);
+            float offsetLen = Vector2Length(offsetFromPlayer);
+            const float maxLagDist = 7.0f;
+            if (offsetLen > maxLagDist) {
+                lightWorldPos = Vector2Add(desiredTarget, Vector2Scale(offsetFromPlayer, maxLagDist / offsetLen));
+            }
+        }
+        // ===================================
+
         float proximity = 0.0f;
+        bool isChasing = false;
         if (guard) {
             Rectangle guardFoot = guard->GetFootCollider();
             Vector2 guardCenter = {
@@ -290,24 +343,22 @@ void GameplayState::Update() {
             float linearProx = 1.0f - normalizedDist;
 
             proximity = linearProx * linearProx;
+            isChasing = (guard->GetCurrentState() == GuardState::CHASE);
 
-            if (guard->GetCurrentState() == GuardState::CHASE) {
+            if (isChasing) {
                 proximity = Clamp(proximity * 1.15f, 0.0f, 1.0f);
             }
         }
 
-        // Атмосферна тряска камери при зближенні (до ~0.36 trauma, що дає м'яку вібрацію ~0.8 px)
         if (proximity > 0.05f) {
             float proximityTrauma = Lerp(0.10f, 0.36f, proximity);
             gameCamera.SetMinTrauma(proximityTrauma);
         }
 
-        // Оновлення камери
         float staminaRatio = player->GetCurrentStamina() / player->GetMaxStamina();
         bool effectiveMoving = !isMovementBlocked && player->IsMoving();
         gameCamera.Update(desiredTarget, effectiveMoving, player->IsSprinting(), player->IsExhausted(), staminaRatio, dt);
 
-        // М'яке мерехтіння світла
         float flickerFreq = Lerp(8.5f, 22.0f, proximity);
         float waveAmp = Lerp(0.010f, 0.065f, proximity);
         float noiseAmp = Lerp(0.004f, 0.052f, proximity);
@@ -340,17 +391,35 @@ void GameplayState::Update() {
         currentFlicker = Clamp(currentFlicker, 0.65f, 1.08f);
         SetShaderValue(lightShader, flickerLoc, &currentFlicker, SHADER_UNIFORM_FLOAT);
 
-        // Плавна передача фактора червоного контуру небезпеки в шейдер
         float dangerBlend = 1.0f - expf(-6.0f * dt);
         smoothedDanger = Lerp(smoothedDanger, proximity, dangerBlend);
         SetShaderValue(lightShader, dangerLoc, &smoothedDanger, SHADER_UNIFORM_FLOAT);
-        // ===================================================================
 
-        Vector2 playerScreenPos = gameCamera.GetScreenPosition(desiredTarget);
+        // === РОЗРАХУНОК ВИСНАЖЕННЯ ТА ПАНІКИ ДЛЯ ПОСТ-ПРОЦЕСУ ===
+        float targetExhaustion = 0.0f;
+        if (staminaRatio < 0.40f) {
+            targetExhaustion = Clamp((0.40f - staminaRatio) / 0.40f, 0.0f, 1.0f);
+        }
+        if (player->IsExhausted()) {
+            targetExhaustion = fmaxf(targetExhaustion, 0.78f);
+        }
+        float exhaustBlend = 1.0f - expf(-4.5f * dt);
+        smoothedExhaustion = Lerp(smoothedExhaustion, targetExhaustion, exhaustBlend);
+
+        float targetPanic = Clamp(smoothedDanger * (isChasing ? 1.15f : 0.75f) + damageImpulse * 0.85f, 0.0f, 1.0f);
+        float panicBlend = 1.0f - expf(-5.5f * dt);
+        smoothedPanic = Lerp(smoothedPanic, targetPanic, panicBlend);
+
+        SetShaderValue(lightShader, exhaustionLoc, &smoothedExhaustion, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(lightShader, panicLoc, &smoothedPanic, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(lightShader, timeLoc, &shaderTime, SHADER_UNIFORM_FLOAT);
+        // ==========================================================
+
+        Vector2 lightScreenPos = gameCamera.GetScreenPosition(lightWorldPos);
 
         float pos[2] = {
-            playerScreenPos.x,
-            (float)virtualHeight - playerScreenPos.y
+            lightScreenPos.x,
+            (float)virtualHeight - lightScreenPos.y
         };
 
         SetShaderValue(lightShader, playerPosLoc, pos, SHADER_UNIFORM_VEC2);
@@ -358,7 +427,6 @@ void GameplayState::Update() {
 }
 
 void GameplayState::Draw() {
-    // 1. РЕНДЕРИНГ ІГРОВОГО СВІТУ
     BeginTextureMode(targetTexture);
     ClearBackground(BLACK);
 
@@ -366,12 +434,13 @@ void GameplayState::Draw() {
     renderSystem.RenderWorld(gameMap, player.get(), guard.get());
     if (showDebugOverlay) {
         gameMap.DrawDebug();
+        if (player) player->DrawDebug();
+        if (guard) guard->DrawDebug();
     }
     EndMode2D();
 
     EndTextureMode();
 
-    // 2. МАСШТАБУВАННЯ НА ЕКРАН
     float windowWidth = (float)GetScreenWidth();
     float windowHeight = (float)GetScreenHeight();
 
@@ -395,7 +464,6 @@ void GameplayState::Draw() {
     DrawTexturePro(targetTexture.texture, sourceRec, destRec, origin, 0.0f, WHITE);
     EndShaderMode();
 
-    // 3. ІНТЕРФЕЙС ГРАВЦЯ
     if (player) {
         float staminaRatio = player->GetCurrentStamina() / player->GetMaxStamina();
         if (staminaRatio < 0.0f) staminaRatio = 0.0f;
@@ -444,28 +512,27 @@ void GameplayState::Draw() {
             DrawTexturePro(cardTex, cardSourceRec, cardDestRec, Vector2{ 0.0f, 0.0f }, 0.0f, cardColor);
         }
 
-        Rectangle foot = player->GetFootCollider();
-        DrawRectangle(10, 10, 350, 80, Fade(BLACK, 0.8f));
-        DrawRectangleLines(10, 10, 350, 80, GREEN);
+        if (showDebugOverlay) {
+            Rectangle foot = player->GetFootCollider();
+            DrawRectangle(10, 10, 350, 80, Fade(BLACK, 0.8f));
+            DrawRectangleLines(10, 10, 350, 80, GREEN);
 
-        DrawFPS(20, 20);
-        DrawText(TextFormat("Player Pos: X: %.1f | Y: %.1f", foot.x, foot.y), 20, 45, 18, GREEN);
-        DrawText(TextFormat("Tile Coords: X: %d | Y: %d", (int)(foot.x / 32.0f), (int)(foot.y / 32.0f)), 20, 65, 18, YELLOW);
+            DrawFPS(20, 20);
+            DrawText(TextFormat("Player Pos: X: %.1f | Y: %.1f", foot.x, foot.y), 20, 45, 18, GREEN);
+            DrawText(TextFormat("Tile Coords: X: %d | Y: %d", (int)(foot.x / 32.0f), (int)(foot.y / 32.0f)), 20, 65, 18, YELLOW);
+        }
     }
 
-    // 4. ЗАТЕМНЕННЯ ПРИ ТЕЛЕПОРТАЦІЇ
     if (tpFadeAlpha > 0.0f) {
         DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, tpFadeAlpha));
     }
 
-    // 5. ЕФЕКТ СМЕРТІ ПЕРЕД GAME OVER
     if (isDying) {
         float clampedAlpha = (deathFadeAlpha > 1.0f) ? 1.0f : deathFadeAlpha;
         DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(MAROON, clampedAlpha * 0.45f));
         DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, clampedAlpha));
     }
 
-    // 6. ОВЕРЛЕЙ ПАУЗИ
     if (isPaused) {
         DrawPauseMenu();
     }
