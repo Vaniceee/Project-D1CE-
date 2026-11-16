@@ -59,6 +59,29 @@ void GameplayState::Init() {
 
     am.LoadMusic("guard_chase", Config::PATH_AUDIO_GUARD_CHASE);
 
+    // Генерація короткого клацання для кнопок паузи
+    Wave clickWave = { 0 };
+    clickWave.sampleRate = 44100;
+    clickWave.sampleSize = 16;
+    clickWave.channels = 1;
+    clickWave.frameCount = 1100;
+    short* samples = (short*)RL_MALLOC(clickWave.frameCount * sizeof(short));
+    if (samples != nullptr) {
+        for (unsigned int i = 0; i < clickWave.frameCount; ++i) {
+            float t = (float)i / (float)clickWave.sampleRate;
+            float env = expf(-t * 145.0f);
+            float sig = sinf(2.0f * PI * 940.0f * t) * 0.65f + sinf(2.0f * PI * 1880.0f * t) * 0.35f;
+            samples[i] = (short)(sig * env * 11000.0f);
+        }
+        clickWave.data = samples;
+        pauseHoverSound = LoadSoundFromWave(clickWave);
+        UnloadWave(clickWave);
+        hasPauseHoverSound = (pauseHoverSound.stream.buffer != nullptr);
+        if (hasPauseHoverSound) {
+            SetSoundVolume(pauseHoverSound, 0.26f);
+        }
+    }
+
     gameMap.Load(Config::PATH_MAP);
 
     // 1. Спавн гравця з мапи
@@ -85,18 +108,27 @@ void GameplayState::Init() {
     // 4. Ініціалізація кнопок меню паузи
     float screenW = (float)GetScreenWidth();
     float screenH = (float)GetScreenHeight();
-    float btnWidth = 300.0f;
-    float btnHeight = 60.0f;
+    float btnWidth = 310.0f;
+    float btnHeight = 58.0f;
     float btnX = (screenW - btnWidth) * 0.5f;
 
-    resumeButton.bounds = { btnX, (screenH * 0.5f) - 40.0f, btnWidth, btnHeight };
+    resumeButton.bounds = { btnX, (screenH * 0.5f) - 36.0f, btnWidth, btnHeight };
     resumeButton.text = "RESUME";
+    resumeButton.isHovered = false;
+    resumeButton.wasHovered = false;
+    resumeButton.hoverProgress = 0.0f;
+    resumeButton.isDanger = false;
 
-    exitToMenuButton.bounds = { btnX, (screenH * 0.5f) + 40.0f, btnWidth, btnHeight };
+    exitToMenuButton.bounds = { btnX, (screenH * 0.5f) + 44.0f, btnWidth, btnHeight };
     exitToMenuButton.text = "MAIN MENU";
+    exitToMenuButton.isHovered = false;
+    exitToMenuButton.wasHovered = false;
+    exitToMenuButton.hoverProgress = 0.0f;
+    exitToMenuButton.isDanger = true;
 
     // Скидання станів
     isPaused = false;
+    pauseAnimTime = 0.0f;
     isDying = false;
     deathFadeAlpha = 0.0f;
     tpPhase = TeleportPhase::NONE;
@@ -130,6 +162,12 @@ void GameplayState::Cleanup() {
     }
     gameMap.Unload();
 
+    if (hasPauseHoverSound) {
+        UnloadSound(pauseHoverSound);
+        pauseHoverSound = { 0 };
+        hasPauseHoverSound = false;
+    }
+
     if (lightShader.id != 0) {
         UnloadShader(lightShader);
     }
@@ -144,11 +182,30 @@ void GameplayState::Cleanup() {
     AssetManager::Instance().UnloadAll();
 }
 
-void GameplayState::UpdatePauseMenu() {
+void GameplayState::UpdatePauseMenu(float dt) {
+    pauseAnimTime += dt;
     Vector2 mousePos = GetMousePosition();
+
+    resumeButton.wasHovered = resumeButton.isHovered;
+    exitToMenuButton.wasHovered = exitToMenuButton.isHovered;
 
     resumeButton.isHovered = CheckCollisionPointRec(mousePos, resumeButton.bounds);
     exitToMenuButton.isHovered = CheckCollisionPointRec(mousePos, exitToMenuButton.bounds);
+
+    if (hasPauseHoverSound) {
+        if (resumeButton.isHovered && !resumeButton.wasHovered) {
+            SetSoundPitch(pauseHoverSound, 1.08f);
+            PlaySound(pauseHoverSound);
+        }
+        else if (exitToMenuButton.isHovered && !exitToMenuButton.wasHovered) {
+            SetSoundPitch(pauseHoverSound, 0.86f);
+            PlaySound(pauseHoverSound);
+        }
+    }
+
+    float animSpeed = 1.0f - expf(-12.0f * dt);
+    resumeButton.hoverProgress = Lerp(resumeButton.hoverProgress, resumeButton.isHovered ? 1.0f : 0.0f, animSpeed);
+    exitToMenuButton.hoverProgress = Lerp(exitToMenuButton.hoverProgress, exitToMenuButton.isHovered ? 1.0f : 0.0f, animSpeed);
 
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         if (resumeButton.isHovered) {
@@ -181,6 +238,9 @@ void GameplayState::Update() {
     if (InputManager::IsPausePressed() && tpPhase == TeleportPhase::NONE) {
         isPaused = !isPaused;
         if (isPaused) {
+            pauseAnimTime = 0.0f;
+            resumeButton.hoverProgress = 0.0f;
+            exitToMenuButton.hoverProgress = 0.0f;
             PauseMusicStream(bgMusic);
             if (guard) guard->SetAudioPaused(true);
         }
@@ -191,7 +251,7 @@ void GameplayState::Update() {
     }
 
     if (isPaused) {
-        UpdatePauseMenu();
+        UpdatePauseMenu(dt);
         return;
     }
 
@@ -395,7 +455,6 @@ void GameplayState::Update() {
         smoothedDanger = Lerp(smoothedDanger, proximity, dangerBlend);
         SetShaderValue(lightShader, dangerLoc, &smoothedDanger, SHADER_UNIFORM_FLOAT);
 
-        // === РОЗРАХУНОК ВИСНАЖЕННЯ ТА ПАНІКИ ДЛЯ ПОСТ-ПРОЦЕСУ ===
         float targetExhaustion = 0.0f;
         if (staminaRatio < 0.40f) {
             targetExhaustion = Clamp((0.40f - staminaRatio) / 0.40f, 0.0f, 1.0f);
@@ -413,7 +472,6 @@ void GameplayState::Update() {
         SetShaderValue(lightShader, exhaustionLoc, &smoothedExhaustion, SHADER_UNIFORM_FLOAT);
         SetShaderValue(lightShader, panicLoc, &smoothedPanic, SHADER_UNIFORM_FLOAT);
         SetShaderValue(lightShader, timeLoc, &shaderTime, SHADER_UNIFORM_FLOAT);
-        // ==========================================================
 
         Vector2 lightScreenPos = gameCamera.GetScreenPosition(lightWorldPos);
 
@@ -542,29 +600,127 @@ void GameplayState::DrawPauseMenu() {
     float screenW = (float)GetScreenWidth();
     float screenH = (float)GetScreenHeight();
 
-    DrawRectangle(0, 0, (int)screenW, (int)screenH, Fade(BLACK, 0.72f));
+    // 1. Темне затемнення + сканлайни режиму заморозки камери спостереження
+    DrawRectangle(0, 0, (int)screenW, (int)screenH, Fade(BLACK, 0.78f));
+    for (int y = 0; y < (int)screenH; y += 4) {
+        DrawRectangle(0, y, (int)screenW, 1, Fade(WHITE, 0.03f));
+    }
 
+    // 2. Кутові візири CCTV
+    float margin = 26.0f;
+    float arm = 26.0f;
+    Color hudCol = ColorAlpha(GOLD, 0.35f);
+    DrawLineEx({ margin, margin }, { margin + arm, margin }, 1.5f, hudCol);
+    DrawLineEx({ margin, margin }, { margin, margin + arm }, 1.5f, hudCol);
+    DrawLineEx({ screenW - margin - arm, margin }, { screenW - margin, margin }, 1.5f, hudCol);
+    DrawLineEx({ screenW - margin, margin }, { screenW - margin, margin + arm }, 1.5f, hudCol);
+    DrawLineEx({ margin, screenH - margin }, { margin + arm, screenH - margin }, 1.5f, hudCol);
+    DrawLineEx({ margin, screenH - margin - arm }, { margin, screenH - margin }, 1.5f, hudCol);
+    DrawLineEx({ screenW - margin - arm, screenH - margin }, { screenW - margin, screenH - margin }, 1.5f, hudCol);
+    DrawLineEx({ screenW - margin, screenH - margin - arm }, { screenW - margin, screenH - margin }, 1.5f, hudCol);
+
+    if (fmodf(pauseAnimTime, 1.2f) < 0.75f) {
+        DrawRectangle((int)(margin + 14.0f), (int)(margin + 14.0f), 8, 8, GOLD);
+    }
+    DrawText("PAUSE // CAM-04 FREEZE", (int)(margin + 30.0f), (int)(margin + 11.0f), 15, ColorAlpha(RAYWHITE, 0.7f));
+
+    // 3. Неоновий заголовок PAUSED
     const char* pauseTitle = "PAUSED";
-    int fontSize = 54;
+    int fontSize = 58;
     int textWidth = MeasureText(pauseTitle, fontSize);
-    DrawText(pauseTitle, (int)((screenW - textWidth) * 0.5f), (int)(screenH * 0.28f), fontSize, GOLD);
+    int titleX = (int)((screenW - textWidth) * 0.5f);
+    int titleY = (int)(screenH * 0.25f);
+    float glow = 0.85f + 0.15f * sinf(pauseAnimTime * 3.0f);
 
+    DrawText(pauseTitle, titleX - 2, titleY + 2, fontSize, ColorAlpha(RED, 0.3f * glow));
+    DrawText(pauseTitle, titleX - 1, titleY, fontSize, ColorAlpha(GOLD, 0.4f * glow));
+    DrawText(pauseTitle, titleX + 1, titleY, fontSize, ColorAlpha(GOLD, 0.4f * glow));
+    DrawText(pauseTitle, titleX, titleY, fontSize, Color{ 255, 226, 110, 255 });
+
+    float centerX = screenW * 0.5f;
+    float lineY = (float)(titleY + fontSize + 12);
+    DrawLineEx({ centerX - 120.0f, lineY }, { centerX - 12.0f, lineY }, 1.5f, ColorAlpha(GOLD, 0.45f));
+    DrawLineEx({ centerX + 12.0f, lineY }, { centerX + 120.0f, lineY }, 1.5f, ColorAlpha(GOLD, 0.45f));
+    DrawPoly({ centerX, lineY }, 4, 5.0f, 0.0f, GOLD);
+
+    // 4. Кнопки у стилі Art Deco
     DrawPauseButton(resumeButton);
     DrawPauseButton(exitToMenuButton);
 }
 
 void GameplayState::DrawPauseButton(const PauseButton& btn) {
-    Color rectColor = btn.isHovered ? Fade(GOLD, 0.3f) : Fade(DARKGRAY, 0.6f);
-    Color borderColor = btn.isHovered ? GOLD : GRAY;
-    Color textColor = btn.isHovered ? WHITE : LIGHTGRAY;
+    float p = btn.hoverProgress;
+    float expandX = p * 12.0f;
+    float expandY = p * 2.0f;
 
-    DrawRectangleRec(btn.bounds, rectColor);
-    DrawRectangleLinesEx(btn.bounds, 2.0f, borderColor);
+    float jitterX = (btn.isDanger && p > 0.05f) ? sinf(pauseAnimTime * 56.0f) * 1.3f * p : 0.0f;
+    float jitterY = (btn.isDanger && p > 0.05f) ? cosf(pauseAnimTime * 45.0f) * 0.8f * p : 0.0f;
+
+    Rectangle rect = {
+        btn.bounds.x - expandX + jitterX,
+        btn.bounds.y - expandY + jitterY,
+        btn.bounds.width + expandX * 2.0f,
+        btn.bounds.height + expandY * 2.0f
+    };
+
+    Color accentColor = btn.isDanger ? Color{ 225, 48, 56, 255 } : GOLD;
+    Color darkFillBase = btn.isDanger ? Color{ 16, 10, 12, 225 } : Color{ 12, 13, 16, 225 };
+    Color hoverTint = btn.isDanger ? ColorAlpha(MAROON, 0.36f * p) : ColorAlpha(GOLD, 0.16f * p);
+
+    DrawRectangle((int)rect.x + 4, (int)rect.y + 5, (int)rect.width, (int)rect.height, Fade(BLACK, 0.7f));
+    if (p > 0.01f) {
+        Rectangle glowRect = { rect.x - 4.0f, rect.y - 4.0f, rect.width + 8.0f, rect.height + 8.0f };
+        DrawRectangleLinesEx(glowRect, 2.0f, ColorAlpha(accentColor, 0.25f * p));
+    }
+
+    DrawRectangleRec(rect, darkFillBase);
+    if (p > 0.01f) {
+        DrawRectangleRec(rect, hoverTint);
+    }
+
+    if (p > 0.02f) {
+        BeginScissorMode((int)rect.x, (int)rect.y, (int)rect.width, (int)rect.height);
+        float sweepPhase = fmodf(pauseAnimTime * 1.35f, 1.8f) - 0.4f;
+        float sweepX = rect.x + sweepPhase * rect.width;
+        DrawLineEx(
+            { sweepX - 18.0f, rect.y + rect.height },
+            { sweepX + 18.0f, rect.y },
+            14.0f,
+            ColorAlpha(accentColor, 0.14f * p)
+        );
+        EndScissorMode();
+    }
+
+    Color outerBorder = ColorLerp(Color{ 95, 95, 102, 200 }, accentColor, p);
+    Color innerBorder = ColorAlpha(accentColor, 0.18f + 0.45f * p);
+
+    DrawRectangleLinesEx(rect, 2.0f, outerBorder);
+    Rectangle innerRect = { rect.x + 5.0f, rect.y + 5.0f, rect.width - 10.0f, rect.height - 10.0f };
+    DrawRectangleLinesEx(innerRect, 1.0f, innerBorder);
+
+    float cornerR = 3.0f + p * 1.0f;
+    Color cornerCol = ColorLerp(GRAY, accentColor, p);
+    DrawPoly({ innerRect.x, innerRect.y }, 4, cornerR, 0.0f, cornerCol);
+    DrawPoly({ innerRect.x + innerRect.width, innerRect.y }, 4, cornerR, 0.0f, cornerCol);
+    DrawPoly({ innerRect.x, innerRect.y + innerRect.height }, 4, cornerR, 0.0f, cornerCol);
+    DrawPoly({ innerRect.x + innerRect.width, innerRect.y + innerRect.height }, 4, cornerR, 0.0f, cornerCol);
 
     int fontSize = 24;
     int textWidth = MeasureText(btn.text.c_str(), fontSize);
-    float textX = btn.bounds.x + (btn.bounds.width - textWidth) * 0.5f;
-    float textY = btn.bounds.y + (btn.bounds.height - fontSize) * 0.5f;
+    float textX = rect.x + (rect.width - textWidth) * 0.5f;
+    float textY = rect.y + (rect.height - fontSize) * 0.5f;
 
+    Color textColor = ColorLerp(LIGHTGRAY, WHITE, p);
+    DrawText(btn.text.c_str(), (int)textX + 1, (int)textY + 2, fontSize, Fade(BLACK, 0.8f));
     DrawText(btn.text.c_str(), (int)textX, (int)textY, fontSize, textColor);
+
+    if (p > 0.05f) {
+        float diamondOffset = 18.0f + p * 10.0f;
+        float diamondRadius = 4.5f * p;
+        float midY = rect.y + rect.height * 0.5f;
+        Color sideDiamondCol = ColorAlpha(accentColor, p);
+
+        DrawPoly({ textX - diamondOffset, midY }, 4, diamondRadius, 0.0f, sideDiamondCol);
+        DrawPoly({ textX + textWidth + diamondOffset, midY }, 4, diamondRadius, 0.0f, sideDiamondCol);
+    }
 }

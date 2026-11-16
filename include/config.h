@@ -11,6 +11,7 @@ namespace Config {
 	constexpr const char* PATH_PNG_MENU_BG = "assets/menu/MainMenuBG.png";
 	constexpr const char* PATH_AUDIO_MENU_MUSIC = "assets/menu/MenuTheme.wav";
 	constexpr const char* PATH_SHADER_MENU = "assets/shaders/menu.frag";
+	constexpr const char* PATH_SHADER_GAMEOVER = "assets/shaders/gameover.frag";
 
 
 	// Конфігурація кроків

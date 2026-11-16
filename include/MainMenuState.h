@@ -10,6 +10,9 @@ struct MenuButton {
     Rectangle bounds;
     std::string text;
     bool isHovered = false;
+    bool wasHovered = false;
+    float hoverProgress = 0.0f;
+    bool isDanger = false; // true для EXIT (багряний стиль із тремтінням)
 };
 
 class MainMenuState : public GameState {
@@ -39,12 +42,17 @@ private:
     float transitionTimer = 0.0f;
     const float transitionDuration = 4.0f;
 
-    Sound startSound;
+    Sound startSound = { 0 };
     bool hasStartSound = false;
+
+    Sound hoverSound = { 0 };
+    bool hasHoverSound = false;
 
     // Кнопки
     MenuButton playButton;
     MenuButton exitButton;
 
+    void DrawNeonTitle(float screenW, float screenH);
     void DrawButton(const MenuButton& btn);
+    void DrawCctvOverlay(float screenW, float screenH, float transitionProgress);
 };

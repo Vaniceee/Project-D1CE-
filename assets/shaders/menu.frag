@@ -32,7 +32,6 @@ float hash13(vec3 p3)
     return fract((p3.x + p3.y) * p3.z);
 }
 
-// Плавний 2D шум для сигарного диму
 float valueNoise(vec2 p)
 {
     vec2 i = floor(p);
@@ -60,7 +59,6 @@ float fbm(vec2 p)
     return value;
 }
 
-// Дрібні пилинки, що зависають у повітрі
 float DustLayer(vec2 uv, float gridScale, float speed, float sizeRadius, float seed)
 {
     vec2 aspectUV = vec2(uv.x * (resolution.x / max(resolution.y, 1.0)), uv.y);
@@ -90,37 +88,45 @@ float DustLayer(vec2 uv, float gridScale, float speed, float sizeRadius, float s
 
 void main()
 {
-    // 0. ПАРАЛАКС ВІД РУХУ МИШІ + ЗАПАС ПО КРАЯХ (без чорних смуг)
+    // 0. ПАРАЛАКС ВІД РУХУ МИШІ + ЗАПАС ПО КРАЯХ
     vec2 clampedMouse = clamp(mouseOffset, vec2(-1.0), vec2(1.0));
-    float zoom = 0.962; // Запас ~3.8% по периметру для вільного ходу камери
+    float zoom = 0.962;
     vec2 zoomedUV = (fragTexCoord - 0.5) * zoom + 0.5;
 
-    // Оцінка глибини сцени: передній план (рулетка внизу праворуч і фігура в масці) рухається сильніше
     float rouletteDepth = smoothstep(0.45, 0.85, fragTexCoord.x) * smoothstep(0.50, 0.95, fragTexCoord.y);
     float ghostFigureDepth = smoothstep(0.76, 0.96, fragTexCoord.x) * smoothstep(0.18, 0.85, fragTexCoord.y);
     float slotsDepth = (1.0 - smoothstep(0.05, 0.34, fragTexCoord.x)) * 0.35;
     float depthFactor = clamp(0.45 + rouletteDepth * 0.75 + ghostFigureDepth * 0.65 + slotsDepth, 0.45, 1.35);
 
-    // Камера зміщується назустріч руху курсора
     vec2 parallaxShift = clampedMouse * vec2(0.014, 0.010) * depthFactor;
     vec2 uv = clamp(zoomedUV + parallaxShift, vec2(0.001), vec2(0.999));
-
-    // Окремий шар паралаксу для диму та пилу
     vec2 atmosphereUV = zoomedUV + clampedMouse * vec2(0.022, 0.015);
 
-    // 1. ЗВУЖЕНІ МАСКИ ЕКРАНІВ (прив'язані до uv, тому не з'їжджають при паралаксі)
+    // 1. МАСКИ ЕКРАНІВ ТА СИЛУЕТІВ ДЛЯ ПАСХАЛОК
     float slotZone = smoothstep(0.02, 0.04, uv.x) * (1.0 - smoothstep(0.27, 0.29, uv.x))
                    * smoothstep(0.28, 0.305, uv.y) * (1.0 - smoothstep(0.515, 0.54, uv.y));
 
     float monitorZone = smoothstep(0.575, 0.595, uv.x) * (1.0 - smoothstep(0.68, 0.70, uv.x))
                       * smoothstep(0.015, 0.035, uv.y) * (1.0 - smoothstep(0.13, 0.15, uv.y));
 
+    // Зона тіньового монстра праворуч біля прожектора
+    float shadowMonsterZone = smoothstep(0.73, 0.78, uv.x) * (1.0 - smoothstep(0.89, 0.94, uv.x))
+                            * smoothstep(0.24, 0.30, uv.y) * (1.0 - smoothstep(0.62, 0.68, uv.y));
+
     float screenDevicesMask = clamp(slotZone + monitorZone, 0.0, 1.0);
 
-    // 2. ГЛІТЧІ АВТОМАТІВ ТА МОНІТОРА
+    // Таймери пасхалок (активуються після 15-ї секунди перебування в меню)
+    float idleUnlocked = step(15.0, time) * (1.0 - transitionProgress);
+    float scareCycle = mod(max(time - 15.0, 0.0), 14.0);
+    // Спалах білого шуму на моніторі (0.0 .. 0.45 с циклу)
+    float monitorStaticBurst = idleUnlocked * smoothstep(0.0, 0.05, scareCycle) * (1.0 - smoothstep(0.32, 0.48, scareCycle));
+    // Різкий «ривок» силуету монстра у глітчі (6.5 .. 6.82 с циклу)
+    float monsterTwitchBurst = idleUnlocked * smoothstep(6.50, 6.54, scareCycle) * (1.0 - smoothstep(6.74, 6.84, scareCycle));
+
+    // 2. ГЛІТЧІ АВТОМАТІВ, МОНІТОРА ТА ПАСХАЛКИ МОНСТРА
     float burstClock = sin(time * 2.4) * sin(time * 5.9 + 1.4);
     float glitchBurst = smoothstep(0.68, 0.96, burstClock);
-    glitchBurst = max(glitchBurst, transitionProgress * 0.95);
+    glitchBurst = max(glitchBurst, max(transitionProgress * 0.95, monitorStaticBurst));
 
     float lineRow = floor(uv.y * 220.0);
     float tick = floor(time * 18.0);
@@ -132,9 +138,17 @@ void main()
     float jitterStrength = localJitter + globalTransitionJitter;
 
     float shiftX = (hash12(vec2(lineRow, tick + 9.0)) - 0.5) * 2.0 * jitterStrength;
+
+    // Різкий зсув тіньового силуету монстра під час пасхалки
+    float monsterStep = (hash12(vec2(floor(time * 32.0), 3.1)) > 0.45) ? 1.0 : -0.6;
+    shiftX += shadowMonsterZone * monsterTwitchBurst * 0.022 * monsterStep;
+
     vec2 glitchedUV = clamp(vec2(uv.x + shiftX, uv.y), vec2(0.001), vec2(0.999));
 
-    float chromaOffset = (0.0024 * screenDevicesMask * glitchBurst) + (transitionProgress * 0.006 * length(uv - 0.5));
+    float chromaOffset = (0.0024 * screenDevicesMask * glitchBurst)
+                       + (transitionProgress * 0.006 * length(uv - 0.5))
+                       + (shadowMonsterZone * monsterTwitchBurst * 0.012);
+
     float r = texture(texture0, clamp(glitchedUV + vec2(chromaOffset, 0.0), vec2(0.001), vec2(0.999))).r;
     vec4 baseSample = texture(texture0, glitchedUV);
     float b = texture(texture0, clamp(glitchedUV - vec2(chromaOffset, 0.0), vec2(0.001), vec2(0.999))).b;
@@ -145,12 +159,19 @@ void main()
     float scanline = 1.0 - 0.10 * screenDevicesMask * (0.5 + 0.5 * sin(uv.y * resolution.y * 1.5 - time * 12.0));
     col *= screenFlicker * scanline;
 
+    // Білий сніг/перешкоди всередині монітора під час спалаху
+    if (monitorStaticBurst > 0.01 && monitorZone > 0.01) {
+        float tvSnow = hash13(vec3(floor(uv * resolution * 0.5), floor(time * 45.0)));
+        vec3 snowCol = vec3(0.75, 0.92, 0.80) * (0.35 + 0.65 * tvSnow);
+        col = mix(col, snowCol, monitorZone * monitorStaticBurst * 0.85);
+    }
+
     // 3. ПУЛЬСАЦІЯ ЧЕРВОНИХ ОЧЕЙ І НЕОНУ
     float redDominance = clamp((col.r - max(col.g, col.b) * 1.35) * 3.0, 0.0, 1.0);
-    float eyePulse = 0.88 + 0.24 * sin(time * 2.6) + 0.08 * sin(time * 11.0);
+    float eyePulse = 0.88 + 0.24 * sin(time * 2.6) + 0.08 * sin(time * 11.0) + monsterTwitchBurst * 0.65;
     col.r = clamp(col.r * mix(1.0, eyePulse, redDominance), 0.0, 1.0);
 
-    // 4. КЛУБИ СИГАРНОГО ДИМУ (FBM зі своїм глибинним паралаксом)
+    // 4. КЛУБИ СИГАРНОГО ДИМУ (FBM)
     vec2 smokeUV1 = atmosphereUV * vec2(2.4, 1.7) + vec2(time * 0.032, -time * 0.018);
     vec2 smokeUV2 = atmosphereUV * vec2(4.1, 3.0) + vec2(-time * 0.022, -time * 0.030);
     float smokeRaw = fbm(smokeUV1) * 0.62 + fbm(smokeUV2) * 0.38;
@@ -175,7 +196,6 @@ void main()
 
     col += vec3(0.16, 0.22, 0.17) * smokeBillows * spotCone * 0.85;
 
-    // 3 шари дрібних пилинок (рухаються в шарі атмосфери)
     float dustBig = DustLayer(atmosphereUV, 16.0, 0.018, 0.108, 1.0);
     float dustMid = DustLayer(atmosphereUV, 24.0, 0.025, 0.090, 2.0);
     float dustSmall = DustLayer(atmosphereUV, 34.0, 0.015, 0.078, 3.0);

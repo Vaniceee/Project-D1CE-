@@ -18,6 +18,9 @@ struct PauseButton {
     Rectangle bounds;
     std::string text;
     bool isHovered = false;
+    bool wasHovered = false;
+    float hoverProgress = 0.0f;
+    bool isDanger = false;
 };
 
 class GameplayState : public GameState {
@@ -79,9 +82,12 @@ private:
 
     // --- ПАУЗА ---
     bool isPaused = false;
+    float pauseAnimTime = 0.0f;
+    Sound pauseHoverSound = { 0 };
+    bool hasPauseHoverSound = false;
     PauseButton resumeButton;
     PauseButton exitToMenuButton;
-    void UpdatePauseMenu();
+    void UpdatePauseMenu(float dt);
     void DrawPauseMenu();
     void DrawPauseButton(const PauseButton& btn);
 
