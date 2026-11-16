@@ -19,6 +19,7 @@ void GameManager::Init() {
     SetConfigFlags(FLAG_FULLSCREEN_MODE);
     InitAudioDevice();
     InitWindow(screenWidth, screenHeight, "Stealth Horror Game");
+    SetExitKey(KEY_NULL);
     
     SetTargetFPS(300);
     isRunning = true;
