@@ -77,8 +77,8 @@ void Player::RecalculateFootCollider() {
     float scaledWidth = frameWidth * scale;
     float scaledHeight = frameHeight * scale;
 
-    footBoxWidth = scaledWidth * 0.55f;
-    footBoxHeight = scaledHeight * 0.25f;
+    footBoxWidth = scaledWidth * 0.4f;
+    footBoxHeight = scaledHeight * 0.15f;
 
     footOffsetX = (scaledWidth - footBoxWidth) * 0.5f;
     footOffsetY = scaledHeight - footBoxHeight;
