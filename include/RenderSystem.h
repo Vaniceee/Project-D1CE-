@@ -5,6 +5,13 @@
 #include "Guard.h"
 #include <vector>
 
+struct FloorTutorialHint {
+    Vector2 anchorPos = { 0.0f, 0.0f };
+    float moveAlpha = 1.0f;
+    float sprintAlpha = 1.0f;
+    float time = 0.0f;
+};
+
 struct RenderItem {
     float sortY;
     int order;
@@ -15,8 +22,9 @@ struct RenderItem {
 class RenderSystem {
 public:
     // Малює весь ігровий світ у межах активної 2D-камери
-    void RenderWorld(const GameMap& gameMap, Player* player, Guard* guard);
+    void RenderWorld(const GameMap& gameMap, Player* player, Guard* guard, const FloorTutorialHint* floorHint = nullptr);
 
 private:
     std::vector<RenderItem> renderQueue;
+    void DrawFloorTutorialHint(const FloorTutorialHint& hint) const;
 };

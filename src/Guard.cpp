@@ -661,27 +661,8 @@ void Guard::Draw() {
         DrawCircleV(pt.rightEye, 3.2f, ColorAlpha(RED, a * 0.45f));
     }
 
-    // 2. —илует охоронц€
+    // 2. —илует охоронц€ 
     DrawRectangleRec({ position.x, position.y, w, h }, ColorAlpha(guardColor, alphaMult));
-
-    // 3. ќч≥, що св≥т€тьс€ у напр€мку погл€ду
-    Vector2 headCenter = { position.x + w * 0.5f, position.y + 13.0f };
-    Vector2 lookDir = { cosf(facingAngle), sinf(facingAngle) };
-    Vector2 perpDir = { -lookDir.y, lookDir.x };
-
-    Vector2 eyeBase = Vector2Add(headCenter, Vector2Scale(lookDir, 4.5f));
-    Vector2 leftEye = Vector2Add(eyeBase, Vector2Scale(perpDir, -4.0f));
-    Vector2 rightEye = Vector2Add(eyeBase, Vector2Scale(perpDir, 4.0f));
-
-    Color eyeGlow = (currentState == GuardState::CHASE) ? RED : ORANGE;
-    float pulse = 0.80f + 0.20f * sinf(visualPulseTime * (currentState == GuardState::CHASE ? 14.0f : 4.0f));
-
-    DrawCircleV(leftEye, 5.0f, ColorAlpha(eyeGlow, 0.30f * pulse * alphaMult));
-    DrawCircleV(rightEye, 5.0f, ColorAlpha(eyeGlow, 0.30f * pulse * alphaMult));
-
-    Color eyeCore = (currentState == GuardState::CHASE) ? Color{ 255, 95, 95, 255 } : GOLD;
-    DrawCircleV(leftEye, 2.1f, ColorAlpha(eyeCore, alphaMult));
-    DrawCircleV(rightEye, 2.1f, ColorAlpha(eyeCore, alphaMult));
 }
 
 void Guard::DrawDebug() const {

@@ -5,11 +5,21 @@
 #include "raylib.h"
 #include "raymath.h"
 #include <string>
+#include <cmath>
 
 Player::Player(Vector2 startPos, float startSpeed, float width, float height, Texture2D tex, float playerScale)
     : Entity(startPos, startSpeed, width, height), currentSpeed(startSpeed), texture(tex), scale(playerScale) {
 
+    velocity = { 0.0f, 0.0f };
     RecalculateFootCollider();
+}
+
+void Player::ResetVelocity() {
+    velocity = { 0.0f, 0.0f };
+    isMoving = false;
+    isSprinting = false;
+    activeNudgeX = 0;
+    activeNudgeY = 0;
 }
 
 void Player::TakeDamage(int damage) {
@@ -115,6 +125,41 @@ void Player::Update(const GameMap& gameMap) {
         }
     }
 
+    bool hasMoveInput = (moveDir.x != 0.0f || moveDir.y != 0.0f);
+    float targetSpeed = speed;
+    isSprinting = InputManager::IsSprintPressed() && hasMoveInput && !isExhausted;
+
+    if (isSprinting) {
+        targetSpeed *= 1.68f;
+        currentStamina -= staminaDrainRate * deltaTime;
+        if (currentStamina <= 0.0f) {
+            currentStamina = 0.0f;
+            isExhausted = true;
+        }
+    }
+    else {
+        currentStamina += staminaRegenRate * deltaTime;
+        if (currentStamina >= maxStamina) {
+            currentStamina = maxStamina;
+        }
+        float minStaminaToSprint = maxStamina * 0.4f;
+        if (isExhausted && currentStamina >= minStaminaToSprint) {
+            isExhausted = false;
+        }
+    }
+
+    // Плавний розгін та гальмування вектора швидкості
+    Vector2 targetVelocity = Vector2Scale(moveDir, targetSpeed);
+    float rate = hasMoveInput ? accelRate : decelRate;
+    float velBlend = 1.0f - expf(-rate * deltaTime);
+    velocity = Vector2Lerp(velocity, targetVelocity, velBlend);
+
+    if (!hasMoveInput && Vector2LengthSqr(velocity) < 16.0f) {
+        velocity = { 0.0f, 0.0f };
+    }
+
+    isMoving = hasMoveInput || (Vector2LengthSqr(velocity) > 64.0f);
+
     if (isMoving) {
         frameSpeed = isSprinting ? 0.075f : 0.135f;
 
@@ -138,46 +183,24 @@ void Player::Update(const GameMap& gameMap) {
         }
     }
 
-    isMoving = (moveDir.x != 0.0f or moveDir.y != 0.0f);
-    float currentMoveSpeed = speed;
-    isSprinting = InputManager::IsSprintPressed() && isMoving && !isExhausted;
-
-    if (isSprinting) {
-        currentMoveSpeed *= 1.68f;
-        currentStamina -= staminaDrainRate * deltaTime;
-        if (currentStamina <= 0.0f) {
-            currentStamina = 0.0f;
-            isExhausted = true;
-        }
-    }
-    else {
-        currentStamina += staminaRegenRate * deltaTime;
-        if (currentStamina >= maxStamina) {
-            currentStamina = maxStamina;
-        }
-        float minStaminaToSprint = maxStamina * 0.4f;
-        if (isExhausted && currentStamina >= minStaminaToSprint) {
-            isExhausted = false;
-        }
-    }
-
-    float frameSpeed = currentMoveSpeed * deltaTime;
+    Vector2 frameDelta = Vector2Scale(velocity, deltaTime);
     const float nudgeTolerance = 13.0f;
 
-    if (moveDir.x != 0.0f) {
-        position.x += moveDir.x * frameSpeed;
+    if (fabsf(frameDelta.x) > 0.0001f) {
+        position.x += frameDelta.x;
 
         if (gameMap.CheckWallCollision(GetFootCollider())) {
-            position.x -= moveDir.x * frameSpeed;
+            position.x -= frameDelta.x;
+            float absStepX = fabsf(frameDelta.x);
 
             if (activeNudgeY == 0) {
                 Rectangle testUp = GetFootCollider();
                 testUp.y -= nudgeTolerance;
-                testUp.x += moveDir.x * frameSpeed;
+                testUp.x += frameDelta.x;
 
                 Rectangle testDown = GetFootCollider();
                 testDown.y += nudgeTolerance;
-                testDown.x += moveDir.x * frameSpeed;
+                testDown.x += frameDelta.x;
 
                 bool canPassUp = !gameMap.CheckWallCollision(testUp);
                 bool canPassDown = !gameMap.CheckWallCollision(testDown);
@@ -191,12 +214,15 @@ void Player::Update(const GameMap& gameMap) {
             }
 
             if (activeNudgeY == -1) {
-                position.y -= frameSpeed;
-                moveDir.y = 0.0f;
+                position.y -= absStepX;
+                frameDelta.y = 0.0f;
             }
             else if (activeNudgeY == 1) {
-                position.y += frameSpeed;
-                moveDir.y = 0.0f;
+                position.y += absStepX;
+                frameDelta.y = 0.0f;
+            }
+            else {
+                velocity.x = 0.0f;
             }
         }
         else {
@@ -207,20 +233,21 @@ void Player::Update(const GameMap& gameMap) {
         activeNudgeY = 0;
     }
 
-    if (moveDir.y != 0.0f) {
-        position.y += moveDir.y * frameSpeed;
+    if (fabsf(frameDelta.y) > 0.0001f) {
+        position.y += frameDelta.y;
 
         if (gameMap.CheckWallCollision(GetFootCollider())) {
-            position.y -= moveDir.y * frameSpeed;
+            position.y -= frameDelta.y;
+            float absStepY = fabsf(frameDelta.y);
 
             if (activeNudgeX == 0) {
                 Rectangle testLeft = GetFootCollider();
                 testLeft.x -= nudgeTolerance;
-                testLeft.y += moveDir.y * frameSpeed;
+                testLeft.y += frameDelta.y;
 
                 Rectangle testRight = GetFootCollider();
                 testRight.x += nudgeTolerance;
-                testRight.y += moveDir.y * frameSpeed;
+                testRight.y += frameDelta.y;
 
                 bool canPassLeft = !gameMap.CheckWallCollision(testLeft);
                 bool canPassRight = !gameMap.CheckWallCollision(testRight);
@@ -234,12 +261,15 @@ void Player::Update(const GameMap& gameMap) {
             }
 
             if (activeNudgeX == -1) {
-                position.x -= frameSpeed;
-                moveDir.x = 0.0f;
+                position.x -= absStepY;
+                frameDelta.x = 0.0f;
             }
             else if (activeNudgeX == 1) {
-                position.x += frameSpeed;
-                moveDir.x = 0.0f;
+                position.x += absStepY;
+                frameDelta.x = 0.0f;
+            }
+            else {
+                velocity.y = 0.0f;
             }
         }
         else {
@@ -262,10 +292,25 @@ void Player::Update(const GameMap& gameMap) {
 
 void Player::Draw() {
     Color drawTint = WHITE;
+    float invincibilityAlpha = 1.0f;
     if (isInvincible) {
-        float alpha = (sinf(GetTime() * 20.0f) > 0.0f) ? 0.3f : 0.8f;
-        drawTint = ColorAlpha(WHITE, alpha);
+        invincibilityAlpha = (sinf((float)GetTime() * 20.0f) > 0.0f) ? 0.3f : 0.8f;
+        drawTint = ColorAlpha(WHITE, invincibilityAlpha);
     }
+
+    float visualOffsetX = -1.5f * scale;
+    float scaledWidth = frameWidth * scale;
+    float scaledHeight = frameHeight * scale;
+
+    // Контактна тінь прив'язана точно під центром спрайта на рівні підошви
+    float stepPulse = isMoving ? (0.93f + 0.07f * sinf((float)currentFrame * (PI / 4.0f))) : 1.0f;
+    int shadowCenterX = (int)roundf(position.x + visualOffsetX + scaledWidth * 0.5f);
+    int shadowCenterY = (int)roundf(position.y + scaledHeight - 1.5f * scale);
+    float shadowRadiusX = (footBoxWidth * 0.60f) * stepPulse;
+    float shadowRadiusY = (footBoxHeight * 0.36f) * stepPulse;
+
+    DrawEllipse(shadowCenterX, shadowCenterY, shadowRadiusX * 1.24f, shadowRadiusY * 1.24f, ColorAlpha(BLACK, 0.22f * invincibilityAlpha));
+    DrawEllipse(shadowCenterX, shadowCenterY, shadowRadiusX, shadowRadiusY, ColorAlpha(BLACK, 0.44f * invincibilityAlpha));
 
     if (texture.id > 0) {
         PlayerDirection dir = GetCurrentDirection();
@@ -298,13 +343,11 @@ void Player::Draw() {
             frameHeight
         };
 
-        float visualOffsetX = -1.5f * scale;
-
         Rectangle destRec = {
             position.x + visualOffsetX,
             position.y,
-            frameWidth * scale,
-            frameHeight * scale,
+            scaledWidth,
+            scaledHeight,
         };
 
         DrawTexturePro(texture, sourceRec, destRec, Vector2{ 0.0f, 0.0f }, 0.0f, drawTint);

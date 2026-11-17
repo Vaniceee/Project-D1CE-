@@ -19,22 +19,29 @@ public:
 
     void SetScale(float newScale);
     float GetScale() const { return scale; }
+    void ResetVelocity();
 
     //-------Життя та урон------------
     int GetLives() const { return lives; }
     bool IsInvincible() const { return isInvincible; }
     void TakeDamage(int damage = 1);
 
-    // Геттери для стаміни
+    // Геттери для стаміни та стану руху
     float GetCurrentStamina() const { return currentStamina; }
     float GetMaxStamina() const { return maxStamina; }
     bool IsMoving() const { return isMoving; }
     bool IsSprinting() const { return isSprinting; }
     bool IsExhausted() const { return isExhausted; }
+    Vector2 GetVelocity() const { return velocity; }
 
 private:
     float currentSpeed;
     float scale = 1.0f;
+
+    // --- ІНЕРЦІЯ ТА ФІЗИКА РУХУ ---
+    Vector2 velocity = { 0.0f, 0.0f };
+    float accelRate = 22.0f;
+    float decelRate = 18.0f;
 
     //------Життя та урон---------
     int lives = 3;
@@ -56,12 +63,12 @@ private:
     bool isExhausted = false;
 
     // Розміри та зсув для коллайдера в ногах
-    float footBoxWidth;
-    float footBoxHeight;
-    float footOffsetX;
-    float footOffsetY;
+    float footBoxWidth = 0.0f;
+    float footBoxHeight = 0.0f;
+    float footOffsetX = 0.0f;
+    float footOffsetY = 0.0f;
 
-    // --- ПАРАМЕТРИ АНІМАЦІЇ IDLE ---
+    // --- ПАРАМЕТРИ АНІМАЦІЇ ---
     Texture2D texture = { 0 };
     int currentFrame = 0;
     int totalFrames = 8;

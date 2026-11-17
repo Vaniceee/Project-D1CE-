@@ -1,19 +1,11 @@
 #pragma once
 
 #include "GameState.h"
+#include "MainMenuUI.h"
 #include "raylib.h"
 #include "AssetManager.h"
 #include "config.h"
 #include <string>
-
-struct MenuButton {
-    Rectangle bounds;
-    std::string text;
-    bool isHovered = false;
-    bool wasHovered = false;
-    float hoverProgress = 0.0f;
-    bool isDanger = false; // true для EXIT (багряний стиль із тремтінням)
-};
 
 class MainMenuState : public GameState {
 public:
@@ -23,6 +15,8 @@ public:
     void Draw() override;
 
 private:
+    MainMenuUI menuUI;
+
     Texture2D bgTexture = { 0 };
     Music bgMusic = { 0 };
     bool hasBackground = false;
@@ -51,8 +45,4 @@ private:
     // Кнопки
     MenuButton playButton;
     MenuButton exitButton;
-
-    void DrawNeonTitle(float screenW, float screenH);
-    void DrawButton(const MenuButton& btn);
-    void DrawCctvOverlay(float screenW, float screenH, float transitionProgress);
 };
