@@ -13,6 +13,11 @@ uniform float flicker;
 uniform vec4 ambientColor;
 uniform float dangerFactor;
 
+// Параметри камери для прив'язки пилу до світових координат карти
+uniform vec2 cameraTarget;
+uniform vec2 cameraOffset;
+uniform float cameraZoom;
+
 // Параметри стану гравця
 uniform float exhaustionFactor; // 0.0 .. 1.0 (низька стаміна / виснаження)
 uniform float panicFactor;      // 0.0 .. 1.0 (близькість охоронця / погоня / удар)
@@ -32,24 +37,24 @@ vec2 hash22(vec2 p)
     return fract((p3.xx + p3.yz) * p3.zy);
 }
 
-// Дрібні порошинки, що виблискують у конусі ліхтарика
-float LightDustLayer(vec2 pixelPos, float cellSize, float speed, float radiusFrac, float seed)
+// Дрібні порошинки у світових координатах кімнати
+float LightDustLayer(vec2 worldPos, float cellSize, float speed, float radiusFrac, float seed)
 {
     vec2 drift = vec2(
-        sin(time * 0.35 + seed) * 14.0 - time * speed * 6.0,
-        cos(time * 0.28 + seed * 1.7) * 10.0 - time * speed * 4.5
+        sin(time * 0.35 + seed) * 7.0 - time * speed * 3.0,
+        cos(time * 0.28 + seed * 1.7) * 5.0 - time * speed * 2.2
     );
-    vec2 p = (pixelPos + drift) / cellSize + seed * 11.3;
+    vec2 p = (worldPos + drift) / cellSize + seed * 11.3;
     vec2 cell = floor(p);
     vec2 f = fract(p) - 0.5;
 
     vec2 rnd = hash22(cell);
-    if (rnd.x < 0.80) return 0.0;
+    if (rnd.x < 0.78) return 0.0;
 
     vec2 wobble = vec2(
         sin(time * (1.1 + rnd.y * 1.4) + rnd.x * 6.28),
         cos(time * (0.9 + rnd.x * 1.3) + rnd.y * 6.28)
-    ) * 0.28;
+    ) * 0.26;
 
     float d = length(f - wobble);
     float mote = 1.0 - smoothstep(radiusFrac * 0.45, radiusFrac, d);
@@ -109,11 +114,15 @@ void main()
 
     vec3 finalRGB = mix(texRGB * ambientColor.rgb, litColor, lightFactor);
 
-    // 3.5 ПИЛИНКИ В ПОВІТРІ НАВКОЛО ДЖЕРЕЛА СВІТЛА
+    // 3.5 ПИЛИНКИ У СВІТОВОМУ ПРОСТОРІ (підсвічуються лише в зоні світла)
     float dustMask = smoothstep(0.08, 0.65, lightFactor) * (1.0 - smoothstep(0.85, 1.0, lightFactor));
     if (dustMask > 0.01) {
-        float d1 = LightDustLayer(pixelPos, 46.0, 0.55, 0.085, 1.0);
-        float d2 = LightDustLayer(pixelPos, 32.0, 0.38, 0.070, 2.0);
+        vec2 raylibScreenPos = vec2(pixelPos.x, resolution.y - pixelPos.y);
+        float safeZoom = max(cameraZoom, 0.01);
+        vec2 worldPos = cameraTarget + (raylibScreenPos - cameraOffset) / safeZoom;
+
+        float d1 = LightDustLayer(worldPos, 26.0, 0.45, 0.085, 1.0);
+        float d2 = LightDustLayer(worldPos, 18.0, 0.30, 0.070, 2.0);
         float dustSum = clamp(d1 * 0.9 + d2 * 0.65, 0.0, 1.2);
         vec3 dustTint = mix(vec3(1.0, 0.94, 0.80), vec3(1.0, 0.45, 0.40), dangerFactor * 0.55);
         finalRGB += dustTint * dustSum * dustMask * 0.32;

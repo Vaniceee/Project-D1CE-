@@ -4,6 +4,18 @@
 #include "GameManager.h"
 #include "InputManager.h"
 
+void GameplayState::SyncShaderCameraUniforms() {
+    if (lightShader.id == 0) return;
+    const Camera2D& cam = gameCamera.GetCamera();
+    float targetArr[2] = { cam.target.x, cam.target.y };
+    float offsetArr[2] = { cam.offset.x, cam.offset.y };
+    float zoomVal = cam.zoom;
+
+    SetShaderValue(lightShader, cameraTargetLoc, targetArr, SHADER_UNIFORM_VEC2);
+    SetShaderValue(lightShader, cameraOffsetLoc, offsetArr, SHADER_UNIFORM_VEC2);
+    SetShaderValue(lightShader, cameraZoomLoc, &zoomVal, SHADER_UNIFORM_FLOAT);
+}
+
 void GameplayState::Init() {
     targetTexture = LoadRenderTexture(virtualWidth, virtualHeight);
 
@@ -19,6 +31,9 @@ void GameplayState::Init() {
     exhaustionLoc = GetShaderLocation(lightShader, "exhaustionFactor");
     panicLoc = GetShaderLocation(lightShader, "panicFactor");
     timeLoc = GetShaderLocation(lightShader, "time");
+    cameraTargetLoc = GetShaderLocation(lightShader, "cameraTarget");
+    cameraOffsetLoc = GetShaderLocation(lightShader, "cameraOffset");
+    cameraZoomLoc = GetShaderLocation(lightShader, "cameraZoom");
 
     float res[2] = { (float)virtualWidth, (float)virtualHeight };
     SetShaderValue(lightShader, resolutionLoc, res, SHADER_UNIFORM_VEC2);
@@ -71,6 +86,17 @@ void GameplayState::Init() {
     lightVelocity = { 0.0f, 0.0f };
     isLightPosInitialized = true;
 
+    // Ініціалізація підказок керування на підлозі стартової кімнати
+    floorHint.anchorPos = {
+        startFoot.x + startFoot.width * 0.5f,
+        startFoot.y + startFoot.height
+    };
+    floorHint.moveAlpha = 1.0f;
+    floorHint.sprintAlpha = 1.0f;
+    floorHint.time = 0.0f;
+    hasMovedOnce = false;
+    hasSprintedOnce = false;
+
     const auto& guardSpawns = gameMap.GetGuardSpawns();
     Vector2 guardPos = !guardSpawns.empty() ? guardSpawns[0] : Vector2{ 2200.0f, 2464.0f };
     guard = std::make_unique<Guard>(guardPos, 70.0f);
@@ -78,6 +104,7 @@ void GameplayState::Init() {
 
     baseCameraZoom = 1.8f;
     gameCamera.Init(startPos, virtualWidth, virtualHeight, baseCameraZoom);
+    SyncShaderCameraUniforms();
 
     isPaused = false;
     isDying = false;
@@ -153,6 +180,7 @@ void GameplayState::UpdateDeathSequence(float dt) {
     float targetDeathZoom = Lerp(baseCameraZoom, 2.55f, 1.0f - powf(1.0f - progress, 2.2f));
     gameCamera.SetZoom(Lerp(gameCamera.GetZoom(), targetDeathZoom, 1.0f - expf(-8.0f * dt)));
     gameCamera.Update(deathFocusPos, false, false, true, 0.0f, dt);
+    SyncShaderCameraUniforms();
 
     float lightDecay = Clamp(1.0f - (progress / 0.48f), 0.0f, 1.0f);
     float dyingFlicker = (lightDecay > 0.02f)
@@ -233,6 +261,7 @@ void GameplayState::Update() {
         if (tpFadeAlpha >= 1.0f) {
             tpFadeAlpha = 1.0f;
             player->SetPosition(pendingTeleportPos);
+            player->ResetVelocity();
 
             Rectangle newFoot = player->GetFootCollider();
             lightWorldPos = {
@@ -257,6 +286,23 @@ void GameplayState::Update() {
     bool isMovementBlocked = (tpPhase != TeleportPhase::NONE) || waitForKeysRelease;
     if (!isMovementBlocked) {
         player->Update(gameMap);
+    }
+
+    // Оновлення підказок на підлозі стартової кімнати
+    floorHint.time = shaderTime;
+    if (!isMovementBlocked) {
+        if (player->IsMoving()) {
+            hasMovedOnce = true;
+        }
+        if (player->IsSprinting()) {
+            hasSprintedOnce = true;
+        }
+    }
+    if (hasMovedOnce && floorHint.moveAlpha > 0.0f) {
+        floorHint.moveAlpha = fmaxf(0.0f, floorHint.moveAlpha - dt * 1.15f);
+    }
+    if (hasSprintedOnce && floorHint.sprintAlpha > 0.0f) {
+        floorHint.sprintAlpha = fmaxf(0.0f, floorHint.sprintAlpha - dt * 1.15f);
     }
 
     int currentLives = player->GetLives();
@@ -351,6 +397,7 @@ void GameplayState::Update() {
                     guard->OnPlayerTeleported(enteredTriggerCenter);
                 }
 
+                player->ResetVelocity();
                 pendingTeleportPos = newPlayerPos;
                 tpPhase = TeleportPhase::FADING_OUT;
                 wasInTrigger = true;
@@ -434,6 +481,7 @@ void GameplayState::Update() {
         targetZoom = baseCameraZoom + flashWave * 0.14f;
     }
     gameCamera.SetZoom(Lerp(gameCamera.GetZoom(), targetZoom, 1.0f - expf(-10.0f * dt)));
+    SyncShaderCameraUniforms();
 
     float flickerFreq = Lerp(8.5f, 22.0f, proximity);
     float waveAmp = Lerp(0.010f, 0.065f, proximity);
@@ -496,7 +544,7 @@ void GameplayState::Draw() {
     ClearBackground(BLACK);
 
     BeginMode2D(gameCamera.GetCamera());
-    renderSystem.RenderWorld(gameMap, player.get(), guard.get());
+    renderSystem.RenderWorld(gameMap, player.get(), guard.get(), &floorHint);
 
     for (const auto& p : sprintDust) {
         float ratio = Clamp(p.life / p.maxLife, 0.0f, 1.0f);

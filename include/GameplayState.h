@@ -32,6 +32,10 @@ private:
     std::unique_ptr<Player> player;
     std::unique_ptr<Guard> guard;
 
+    FloorTutorialHint floorHint;
+    bool hasMovedOnce = false;
+    bool hasSprintedOnce = false;
+
     Music bgMusic = { 0 };
 
     int lastPlayerLives = 3;
@@ -54,6 +58,9 @@ private:
     int exhaustionLoc = -1;
     int panicLoc = -1;
     int timeLoc = -1;
+    int cameraTargetLoc = -1;
+    int cameraOffsetLoc = -1;
+    int cameraZoomLoc = -1;
 
     float lightRadius = 280.0f;
     float flickerTimer = 0.0f;
@@ -96,6 +103,7 @@ private:
     float deathDuration = 2.35f;
     Vector2 deathFocusPos = { 0.0f, 0.0f };
     void UpdateDeathSequence(float dt);
+    void SyncShaderCameraUniforms();
 
     bool showDebugOverlay = false;
 
