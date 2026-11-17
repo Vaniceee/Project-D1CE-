@@ -32,6 +32,7 @@ private:
         const std::string& layerName,
         std::vector<Rectangle>& rects,
         std::vector<std::string>* names,
-        std::unordered_map<std::string, Rectangle>* targets = nullptr
+        std::unordered_map<std::string, Rectangle>* targets = nullptr,
+        std::vector<InteractableObject>* interactables = nullptr
     );
 };

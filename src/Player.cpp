@@ -284,10 +284,6 @@ void Player::Update(const GameMap& gameMap) {
 
     collider.x = position.x + footOffsetX;
     collider.y = position.y + footOffsetY;
-
-    if (InputManager::IsInteractPressed()) {
-        // Дія взаємодії
-    }
 }
 
 void Player::Draw() {

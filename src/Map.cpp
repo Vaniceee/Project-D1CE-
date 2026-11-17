@@ -179,7 +179,7 @@ void GameMap::DrawDebug() const {
         DrawRectangleLinesEx(rect, 1.0f, RED);
     }
 
-    // 2. Тригери взаємодій — напівпрозорий зелений
+    // 2. Тригери переходів/кімнат — напівпрозорий зелений
     for (size_t i = 0; i < data.triggers.size(); ++i) {
         DrawRectangleRec(data.triggers[i], ColorAlpha(GREEN, 0.35f));
         DrawRectangleLinesEx(data.triggers[i], 1.0f, GREEN);
@@ -195,7 +195,18 @@ void GameMap::DrawDebug() const {
         DrawText(name.c_str(), (int)rect.x, (int)rect.y - 12, 10, SKYBLUE);
     }
 
-    // 4. Спавни об'єктів (точки) — напівпрозорий фіолетовий
+    // 4. Інтерактивні об'єкти (_i) — напівпрозорий рожевий (PINK)
+    for (const auto& obj : data.interactables) {
+        float fillAlpha = obj.isUsed ? 0.15f : 0.40f;
+        Color borderCol = obj.isUsed ? GRAY : PINK;
+        DrawRectangleRec(obj.bounds, ColorAlpha(PINK, fillAlpha));
+        DrawRectangleLinesEx(obj.bounds, 1.5f, borderCol);
+
+        const char* label = TextFormat("%s [%s]%s", obj.fullId.c_str(), obj.type.c_str(), obj.isUsed ? " (USED)" : "");
+        DrawText(label, (int)obj.bounds.x, (int)obj.bounds.y - 12, 10, borderCol);
+    }
+
+    // 5. Спавни об'єктів (точки) — напівпрозорий фіолетовий
     DrawCircleV(data.playerSpawn, 10.0f, ColorAlpha(PURPLE, 0.6f));
     DrawCircleLinesV(data.playerSpawn, 10.0f, PURPLE);
 
@@ -281,4 +292,13 @@ std::vector<Vector2> GameMap::GetAllTriggerCenters() const {
             });
     }
     return centers;
+}
+
+InteractableObject* GameMap::GetInteractableAt(Rectangle footHitbox) {
+    for (auto& obj : data.interactables) {
+        if (!obj.isUsed && CheckCollisionRecs(footHitbox, obj.bounds)) {
+            return &obj;
+        }
+    }
+    return nullptr;
 }

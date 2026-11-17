@@ -49,8 +49,8 @@ bool MapParser::Parse(const std::string& mapPath, const std::string& defaultTile
     ParseTileLayers(content, outData);
     ParseObjectLayers(content, outData);
 
-    GAME_INFO("MAP_PARSER", "Map parsed successfully: %s (Size: %dx%d, Tilesets: %zu, Visual Objects: %zu)",
-        mapPath.c_str(), outData.mapWidth, outData.mapHeight, outData.tilesets.size(), outData.visualObjects.size());
+    GAME_INFO("MAP_PARSER", "Map parsed successfully: %s (Size: %dx%d, Tilesets: %zu, Visual Objects: %zu, Interactables: %zu)",
+        mapPath.c_str(), outData.mapWidth, outData.mapHeight, outData.tilesets.size(), outData.visualObjects.size(), outData.interactables.size());
 
     return true;
 }
@@ -255,7 +255,7 @@ void MapParser::ParseObjectLayers(const std::string& content, MapData& outData) 
             lowerLayerName.find("interact") != std::string::npos ||
             lowerLayerName.find("двер") != std::string::npos)
         {
-            ParseRectLayer(content, layerName, outData.triggers, &outData.triggerNames, &outData.teleportTargets);
+            ParseRectLayer(content, layerName, outData.triggers, &outData.triggerNames, &outData.teleportTargets, &outData.interactables);
             GAME_DEBUG("MAP_PARSER", "Auto-detected TRIGGER layer: '%s'", layerName.c_str());
         }
         else if (lowerLayerName.find("spawn") != std::string::npos ||
@@ -442,7 +442,8 @@ void MapParser::ParseRectLayer(
     const std::string& layerName,
     std::vector<Rectangle>& rects,
     std::vector<std::string>* names,
-    std::unordered_map<std::string, Rectangle>* targets)
+    std::unordered_map<std::string, Rectangle>* targets,
+    std::vector<InteractableObject>* interactables)
 {
     size_t layerPos = content.find("\"name\":\"" + layerName + "\"");
     if (layerPos == std::string::npos) return;
@@ -502,6 +503,18 @@ void MapParser::ParseRectLayer(
         if (targets && objName.size() > 2 && objName.substr(objName.size() - 2) == "_t") {
             (*targets)[objName] = rect;
             GAME_INFO("MAP_PARSER", "Registered teleport target '%s' at (%.1f, %.1f)", objName.c_str(), rect.x, rect.y);
+        }
+        else if (interactables && objName.size() > 2 && objName.substr(objName.size() - 2) == "_i") {
+            InteractableObject item;
+            item.fullId = objName.substr(0, objName.size() - 2);
+            size_t underscorePos = item.fullId.find('_');
+            item.type = (underscorePos != std::string::npos) ? item.fullId.substr(0, underscorePos) : item.fullId;
+            item.bounds = rect;
+            item.isUsed = false;
+
+            interactables->push_back(item);
+            GAME_INFO("MAP_PARSER", "Registered interactable '%s' (type: '%s') at (%.1f, %.1f)",
+                item.fullId.c_str(), item.type.c_str(), rect.x, rect.y);
         }
         else {
             rects.push_back(rect);

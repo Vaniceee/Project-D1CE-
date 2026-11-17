@@ -104,6 +104,7 @@ private:
     Vector2 deathFocusPos = { 0.0f, 0.0f };
     void UpdateDeathSequence(float dt);
     void SyncShaderCameraUniforms();
+    void OnInteract(InteractableObject& obj);
 
     bool showDebugOverlay = false;
 

@@ -3,6 +3,7 @@
 #include "GameOverState.h"
 #include "GameManager.h"
 #include "InputManager.h"
+#include "Logger.h"
 
 void GameplayState::SyncShaderCameraUniforms() {
     if (lightShader.id == 0) return;
@@ -14,6 +15,24 @@ void GameplayState::SyncShaderCameraUniforms() {
     SetShaderValue(lightShader, cameraTargetLoc, targetArr, SHADER_UNIFORM_VEC2);
     SetShaderValue(lightShader, cameraOffsetLoc, offsetArr, SHADER_UNIFORM_VEC2);
     SetShaderValue(lightShader, cameraZoomLoc, &zoomVal, SHADER_UNIFORM_FLOAT);
+}
+
+void GameplayState::OnInteract(InteractableObject& obj) {
+    if (obj.isUsed) {
+        GAME_WARN("INTERACT", "Interaction failed: object '%s' (type: '%s') is already used!",
+            obj.fullId.c_str(), obj.type.c_str());
+        return;
+    }
+
+    if (obj.type.empty()) {
+        GAME_ERROR("INTERACT", "Interaction error: object '%s' has an empty type!", obj.fullId.c_str());
+        return;
+    }
+
+    GAME_INFO("INTERACT", "Player pressed [E] near object '%s' (type: '%s')",
+        obj.fullId.c_str(), obj.type.c_str());
+
+    // TODO: подальша логіка взаємодії залежно від obj.type (locker, safe, terminal тощо)
 }
 
 void GameplayState::Init() {
@@ -384,6 +403,14 @@ void GameplayState::Update() {
     }
 
     Rectangle footCollider = player->GetFootCollider();
+
+    // Перевірка взаємодії з об'єктами (_i) на клавішу E
+    if (!isMovementBlocked) {
+        InteractableObject* interactable = gameMap.GetInteractableAt(footCollider);
+        if (interactable != nullptr && InputManager::IsInteractPressed()) {
+            OnInteract(*interactable);
+        }
+    }
 
     gameMap.UpdateTriggers(footCollider);
     bool isInTriggerNow = !gameMap.GetCurrentTriggerMessage().empty();

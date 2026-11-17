@@ -16,6 +16,7 @@ GameManager::~GameManager() {
 }
 
 void GameManager::Init() {
+    SetTraceLogLevel(LOG_WARNING);
     SetConfigFlags(FLAG_FULLSCREEN_MODE);
     InitAudioDevice();
     InitWindow(screenWidth, screenHeight, "Stealth Horror Game");

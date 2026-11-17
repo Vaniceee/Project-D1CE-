@@ -24,6 +24,13 @@ struct MapVisualObject {
     int layerOrder = 0;
 };
 
+struct InteractableObject {
+    std::string fullId;       // Наприклад, "locker_1" або "key_room"
+    std::string type;         // Наприклад, "locker", "safe", "terminal" (частина до першого '_')
+    Rectangle bounds = { 0 }; // Зона спрацьовування перед об'єктом
+    bool isUsed = false;      // Прапорець стану (чи вже взаємодіяли)
+};
+
 // Контейнер для всіх даних, які наповнює MapParser
 struct MapData {
     int mapWidth = 0;
@@ -38,6 +45,7 @@ struct MapData {
     std::vector<Rectangle> triggers;
     std::vector<std::string> triggerNames;
     std::unordered_map<std::string, Rectangle> teleportTargets;
+    std::vector<InteractableObject> interactables;
     std::vector<MapVisualObject> visualObjects;
 
     Vector2 playerSpawn = { 1944.0f, 2464.0f };
@@ -61,6 +69,7 @@ public:
     bool TryGetTeleportDestination(Rectangle playerFootHitbox, Vector2 playerPos, Vector2& outNewPlayerPos) const;
     bool TryGetActiveTriggerCenter(Rectangle footHitbox, Vector2& outTriggerCenter) const;
     std::vector<Vector2> GetAllTriggerCenters() const;
+    InteractableObject* GetInteractableAt(Rectangle footHitbox);
 
     // Гетери
     int GetWidth() const { return data.mapWidth; }
