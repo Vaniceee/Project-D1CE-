@@ -29,6 +29,16 @@ private:
     GameCamera gameCamera;
     GameplayUI hudUI;
 
+    // --- ВЗАЄМОДІЯ З ОБ'ЄКТАМИ ---
+    bool showInteractHint = false;
+
+    // --- ВІДОБРАЖЕННЯ РЕЗУЛЬТАТУ КУБИКІВ ---
+    int lastDice1 = 0;
+    int lastDice2 = 0;
+    int lastDiceSum = 0;
+    float sumDisplayTimer = 0.0f;
+    const float sumDisplayDuration = 1.0f;
+
     std::unique_ptr<Player> player;
     std::unique_ptr<Guard> guard;
 
