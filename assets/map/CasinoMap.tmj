@@ -875,7 +875,7 @@
                         {
                          "draworder":"topdown",
                          "id":19,
-                         "name":"main",
+                         "name":"main_deco",
                          "objects":[
                                 {
                                  "gid":4431,
@@ -3695,7 +3695,7 @@
                         {
                          "draworder":"topdown",
                          "id":24,
-                         "name":"",
+                         "name":"up_deco",
                          "objects":[
                                 {
                                  "gid":4702,
@@ -5876,8 +5876,8 @@
                                  "type":"",
                                  "visible":true,
                                  "width":36,
-                                 "x":4262,
-                                 "y":98
+                                 "x":4262.18181818182,
+                                 "y":100.545454545455
                                 }, 
                                 {
                                  "height":41,
@@ -6751,7 +6751,7 @@
                  "name":"Transparent objects",
                  "opacity":1,
                  "type":"group",
-                 "visible":false,
+                 "visible":true,
                  "x":0,
                  "y":0
                 }],

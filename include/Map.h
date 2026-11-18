@@ -22,6 +22,7 @@ struct MapVisualObject {
     float width = 0.0f;
     float height = 0.0f;
     int layerOrder = 0;
+    float sortY = 0.0f;
 };
 
 struct InteractableObject {

@@ -226,7 +226,7 @@ void MapParser::ParseTileLayers(const std::string& content, MapData& outData) {
 
 void MapParser::ParseObjectLayers(const std::string& content, MapData& outData) {
     size_t searchPos = 0;
-    int visualLayerIndex = 0;
+    int visualLayerIndex = 0; // Порядок шарів у Tiled знизу вгору (0, 1, 2...)
 
     while (true) {
         size_t objArrayPos = content.find("\"objects\":[", searchPos);
@@ -265,11 +265,46 @@ void MapParser::ParseObjectLayers(const std::string& content, MapData& outData) 
             GAME_DEBUG("MAP_PARSER", "Auto-detected SPAWN layer: '%s'", layerName.c_str());
         }
         else {
-            ParseVisualObjectLayer(content, layerName, visualLayerIndex++, outData);
-            GAME_DEBUG("MAP_PARSER", "Auto-detected VISUAL object layer: '%s'", layerName.c_str());
+            // Підлогові об'єкти (килими, сліди) отримують -1, решта — природний індекс шару знизу вгору
+            int order = (lowerLayerName.find("floor") != std::string::npos ||
+                lowerLayerName.find("carpet") != std::string::npos ||
+                lowerLayerName.find("rug") != std::string::npos)
+                ? -1 : visualLayerIndex++;
+
+            ParseVisualObjectLayer(content, layerName, order, outData);
+            GAME_DEBUG("MAP_PARSER", "Auto-detected VISUAL object layer: '%s' (order: %d)", layerName.c_str(), order);
         }
 
         searchPos = objArrayPos + 10;
+    }
+
+    // Прив'язка sortY предметів на меблях до основи меблів під ними (один раз при парсингу карти)
+    for (auto& topObj : outData.visualObjects) {
+        if (topObj.layerOrder <= 0) continue;
+
+        float footX = topObj.x + topObj.width * 0.5f;
+        float footY = topObj.y;
+
+        const MapVisualObject* bestSupport = nullptr;
+        for (const auto& baseObj : outData.visualObjects) {
+            if (baseObj.layerOrder < 0 || baseObj.layerOrder >= topObj.layerOrder) continue;
+
+            float baseLeft = baseObj.x;
+            float baseRight = baseObj.x + baseObj.width;
+            float baseTop = baseObj.y - baseObj.height;
+            float baseBottom = baseObj.y;
+
+            if (footX >= baseLeft && footX <= baseRight &&
+                footY >= baseTop && footY <= baseBottom) {
+                if (!bestSupport || baseObj.sortY > bestSupport->sortY) {
+                    bestSupport = &baseObj;
+                }
+            }
+        }
+
+        if (bestSupport) {
+            topObj.sortY = bestSupport->sortY;
+        }
     }
 }
 
@@ -429,6 +464,7 @@ void MapParser::ParseVisualObjectLayer(const std::string& content, const std::st
                 vObj.width = getFloat("width");
                 vObj.height = getFloat("height");
                 vObj.layerOrder = layerOrder;
+                vObj.sortY = vObj.y;
                 outData.visualObjects.push_back(vObj);
             }
         }
@@ -484,7 +520,6 @@ void MapParser::ParseRectLayer(
 
         Rectangle rect = { getFloat("x"), getFloat("y"), getFloat("width"), getFloat("height") };
 
-        // Надійне зчитування імені незалежно від пробілів після двокрапки у JSON
         std::string objName = "unknown";
         size_t valPos = obj.find("\"name\"");
         if (valPos != std::string::npos) {
