@@ -77,24 +77,35 @@ void GameMap::DrawSingleLayer(const std::vector<int>& layerData) const {
                 DrawTextureRec(activeTileset->texture, srcRec, { posX, posY }, WHITE);
             }
             else {
+                float rotation = 0.0f;
+                bool outFlipH = false;
+                bool outFlipV = false;
+
+                int flags = (flipD ? 4 : 0) | (flipH ? 2 : 0) | (flipV ? 1 : 0);
+                switch (flags) {
+                case 0: rotation = 0.0f;   outFlipH = false; outFlipV = false; break;
+                case 1: rotation = 0.0f;   outFlipH = false; outFlipV = true;  break;
+                case 2: rotation = 0.0f;   outFlipH = true;  outFlipV = false; break;
+                case 3: rotation = 180.0f; outFlipH = false; outFlipV = false; break;
+                case 4: rotation = 90.0f;  outFlipH = false; outFlipV = true;  break;
+                case 5: rotation = 270.0f; outFlipH = false; outFlipV = false; break;
+                case 6: rotation = 90.0f;  outFlipH = false; outFlipV = false; break;
+                case 7: rotation = 90.0f;  outFlipH = true;  outFlipV = false; break;
+                }
+
+                if (outFlipH) srcRec.width = -srcRec.width;
+                if (outFlipV) srcRec.height = -srcRec.height;
+
                 Rectangle destRec = {
-                    posX + (float)data.tileWidth / 2.0f,
-                    posY + (float)data.tileHeight / 2.0f,
+                    posX + (float)data.tileWidth * 0.5f,
+                    posY + (float)data.tileHeight * 0.5f,
                     (float)activeTileset->tileWidth,
                     (float)activeTileset->tileHeight
                 };
-                Vector2 origin = { (float)activeTileset->tileWidth / 2.0f, (float)activeTileset->tileHeight / 2.0f };
-
-                float rotation = 0.0f;
-                if (flipD) {
-                    if (flipH && !flipV) { rotation = 90.0f; flipH = false; flipV = false; }
-                    else if (!flipH && flipV) { rotation = 270.0f; flipH = false; flipV = false; }
-                    else if (flipH && flipV) { rotation = 90.0f; flipH = false; flipV = true; }
-                    else { rotation = 270.0f; flipH = true; flipV = false; }
-                }
-
-                if (flipH) srcRec.width = -srcRec.width;
-                if (flipV) srcRec.height = -srcRec.height;
+                Vector2 origin = {
+                    (float)activeTileset->tileWidth * 0.5f,
+                    (float)activeTileset->tileHeight * 0.5f
+                };
 
                 DrawTexturePro(activeTileset->texture, srcRec, destRec, origin, rotation, WHITE);
             }
@@ -151,23 +162,36 @@ void GameMap::DrawVisualObject(const MapVisualObject& obj) const {
     bool flipD = (obj.rawGid & FLIP_D) != 0;
 
     float rotation = 0.0f;
-    if (flipD) {
-        if (flipH && !flipV) { rotation = 90.0f; flipH = false; flipV = false; }
-        else if (!flipH && flipV) { rotation = 270.0f; flipH = false; flipV = false; }
-        else if (flipH && flipV) { rotation = 90.0f; flipH = false; flipV = true; }
-        else { rotation = 270.0f; flipH = true; flipV = false; }
+    bool outFlipH = false;
+    bool outFlipV = false;
+
+    int flags = (flipD ? 4 : 0) | (flipH ? 2 : 0) | (flipV ? 1 : 0);
+    switch (flags) {
+    case 0: rotation = 0.0f;   outFlipH = false; outFlipV = false; break;
+    case 1: rotation = 0.0f;   outFlipH = false; outFlipV = true;  break;
+    case 2: rotation = 0.0f;   outFlipH = true;  outFlipV = false; break;
+    case 3: rotation = 180.0f; outFlipH = false; outFlipV = false; break;
+    case 4: rotation = 90.0f;  outFlipH = false; outFlipV = true;  break;
+    case 5: rotation = 270.0f; outFlipH = false; outFlipV = false; break;
+    case 6: rotation = 90.0f;  outFlipH = false; outFlipV = false; break;
+    case 7: rotation = 90.0f;  outFlipH = true;  outFlipV = false; break;
     }
 
-    if (flipH) srcRec.width = -srcRec.width;
-    if (flipV) srcRec.height = -srcRec.height;
+    if (outFlipH) srcRec.width = -srcRec.width;
+    if (outFlipV) srcRec.height = -srcRec.height;
+
+    // У Tiled obj.width та obj.height вже вказані у фінальному (повернутому) вигляді на мапі,
+    // тому до повороту на 90/270 градусів неквадратний спрайт має розміри (obj.height, obj.width).
+    float preRotWidth = flipD ? obj.height : obj.width;
+    float preRotHeight = flipD ? obj.width : obj.height;
 
     Rectangle destRec = {
         obj.x + obj.width * 0.5f,
         obj.y - obj.height * 0.5f,
-        obj.width,
-        obj.height
+        preRotWidth,
+        preRotHeight
     };
-    Vector2 origin = { obj.width * 0.5f, obj.height * 0.5f };
+    Vector2 origin = { preRotWidth * 0.5f, preRotHeight * 0.5f };
 
     DrawTexturePro(tex, srcRec, destRec, origin, rotation, WHITE);
 }

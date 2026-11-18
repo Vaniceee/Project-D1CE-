@@ -4,6 +4,7 @@
 #include "GameManager.h"
 #include "InputManager.h"
 #include "Logger.h"
+#include "Dice.h"
 
 void GameplayState::SyncShaderCameraUniforms() {
     if (lightShader.id == 0) return;
@@ -18,21 +19,64 @@ void GameplayState::SyncShaderCameraUniforms() {
 }
 
 void GameplayState::OnInteract(InteractableObject& obj) {
+
+    // Перевіряємо, чи об'єкт вже відкритий
     if (obj.isUsed) {
-        GAME_WARN("INTERACT", "Interaction failed: object '%s' (type: '%s') is already used!",
-            obj.fullId.c_str(), obj.type.c_str());
+        GAME_INFO("INTERACT",
+            "Object '%s' is already opened!",
+            obj.fullId.c_str());
         return;
     }
 
-    if (obj.type.empty()) {
-        GAME_ERROR("INTERACT", "Interaction error: object '%s' has an empty type!", obj.fullId.c_str());
+    // Перевіряємо тип об'єкта
+    if (obj.type != "lock" && obj.type != "safe") {
+        GAME_INFO("INTERACT",
+            "This object cannot be opened with dice.");
         return;
     }
 
-    GAME_INFO("INTERACT", "Player pressed [E] near object '%s' (type: '%s')",
-        obj.fullId.c_str(), obj.type.c_str());
+    // Кидаємо два кубики
+    lastDice1 = Dice::Roll();
+    lastDice2 = Dice::Roll();
 
-    // TODO: подальша логіка взаємодії залежно від obj.type (locker, safe, terminal тощо)
+    // Обчислюємо суму
+    lastDiceSum = lastDice1 + lastDice2;
+
+    // Запускаємо відображення результату на 2 секунди
+    sumDisplayTimer = sumDisplayDuration;
+
+    GAME_INFO("DICE",
+        "Dice: %d + %d = %d",
+        lastDice1,
+        lastDice2,
+        lastDiceSum);
+
+    // Перевіряємо можливість відкриття
+    bool opened = false;
+
+    if (obj.type == "lock" && lastDiceSum >= 7) {
+        opened = true;
+    }
+    else if (obj.type == "safe" && lastDiceSum >= 9) {
+        opened = true;
+    }
+
+    // Відкриваємо об'єкт або повідомляємо про невдачу
+    if (opened) {
+
+        obj.isUsed = true;
+
+        GAME_INFO("INTERACT",
+            "Object '%s' opened successfully!",
+            obj.fullId.c_str());
+    }
+    else {
+
+        GAME_INFO("INTERACT",
+            "Failed to open '%s'. Dice sum: %d. Try again!",
+            obj.fullId.c_str(),
+            lastDiceSum);
+    }
 }
 
 void GameplayState::Init() {
@@ -227,6 +271,14 @@ void GameplayState::UpdateDeathSequence(float dt) {
 void GameplayState::Update() {
     float dt = GetFrameTime();
 
+    if (sumDisplayTimer > 0.0f) {
+        sumDisplayTimer -= dt;
+
+        if (sumDisplayTimer < 0.0f) {
+            sumDisplayTimer = 0.0f;
+        }
+    }
+
     if (isDying) {
         UpdateDeathSequence(dt);
         return;
@@ -403,12 +455,16 @@ void GameplayState::Update() {
     }
 
     Rectangle footCollider = player->GetFootCollider();
-
+    showInteractHint = false;    //
     // Перевірка взаємодії з об'єктами (_i) на клавішу E
     if (!isMovementBlocked) {
         InteractableObject* interactable = gameMap.GetInteractableAt(footCollider);
-        if (interactable != nullptr && InputManager::IsInteractPressed()) {
-            OnInteract(*interactable);
+        if (interactable != nullptr && !interactable->isUsed) {
+            showInteractHint = true;
+
+            if (InputManager::IsInteractPressed()) {
+                OnInteract(*interactable);
+            }
         }
     }
 
@@ -573,6 +629,52 @@ void GameplayState::Draw() {
     BeginMode2D(gameCamera.GetCamera());
     renderSystem.RenderWorld(gameMap, player.get(), guard.get(), &floorHint);
 
+    // --- ВІДОБРАЖЕННЯ РЕЗУЛЬТАТУ КУБИКІВ НАД ГОЛОВОЮ ---
+    if (player && sumDisplayTimer > 0.0f) {
+
+        Vector2 playerPos = player->GetPosition();
+
+        const char* diceText = TextFormat(
+            "%d + %d = %d",
+            lastDice1,
+            lastDice2,
+            lastDiceSum
+        );
+
+        int fontSize = 16;
+        int textWidth = MeasureText(diceText, fontSize);
+
+        float textX = playerPos.x - textWidth / 2.0f + 25.0f;
+        float textY = playerPos.y - 25.0f;
+
+        // Компактний напівпрозорий фон
+        DrawRectangle(
+            (int)textX - 4,
+            (int)textY - 3,
+            textWidth + 8,
+            fontSize + 6,
+            Fade(BLACK, 0.45f)
+        );
+
+        // Тонка рамка
+        DrawRectangleLines(
+            (int)textX - 4,
+            (int)textY - 3,
+            textWidth + 8,
+            fontSize + 6,
+            Fade(GOLD, 0.8f)
+        );
+
+        // Результат
+        DrawText(
+            diceText,
+            (int)textX,
+            (int)textY,
+            fontSize,
+            GOLD
+        );
+    }
+
     for (const auto& p : sprintDust) {
         float ratio = Clamp(p.life / p.maxLife, 0.0f, 1.0f);
         float radius = p.size * (1.55f - ratio * 0.55f);
@@ -619,6 +721,22 @@ void GameplayState::Draw() {
         hudData.currentCamNumber = currentCamNumber;
 
         hudUI.DrawHud(hudData);
+
+        // --- ПІДКАЗКА ПРО ВЗАЄМОДІЮ ---
+        if (showInteractHint && !isPaused && !isDying) {
+            const char* hintText = "Press E to interact";
+
+            int hintSize = 24;
+            int hintWidth = MeasureText(hintText, hintSize);
+
+            DrawText(
+                hintText,
+                (int)(windowWidth - hintWidth) / 2,
+                (int)(windowHeight - 120),
+                hintSize,
+                YELLOW
+            );
+        }
 
         if (showDebugOverlay) {
             Rectangle foot = player->GetFootCollider();
