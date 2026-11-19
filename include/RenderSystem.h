@@ -27,4 +27,5 @@ public:
 private:
     std::vector<RenderItem> renderQueue;
     void DrawFloorTutorialHint(const FloorTutorialHint& hint) const;
+    void DrawObjectShadows(const std::vector<MapVisualObject>& mapObjects) const;
 };

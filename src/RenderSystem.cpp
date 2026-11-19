@@ -112,6 +112,28 @@ void RenderSystem::DrawFloorTutorialHint(const FloorTutorialHint& hint) const {
     }
 }
 
+void RenderSystem::DrawObjectShadows(const std::vector<MapVisualObject>& mapObjects) const {
+    for (const auto& obj : mapObjects) {
+        // Пропускаємо підлоговий декор (килими тощо мають layerOrder = -1)
+        if (obj.layerOrder < 0) continue;
+
+        // Пропускаємо дрібні предмети, що стоять зверху на столах (у них sortY змінено відносно obj.y)
+        if (std::abs(obj.sortY - obj.y) > 0.1f) continue;
+
+        // У Tiled obj.x та obj.y — це нижній лівий кут об'єкта
+        int shadowCenterX = (int)roundf(obj.x + obj.width * 0.5f);
+        int shadowCenterY = (int)roundf(obj.y - 3.0f);
+
+        // Видовжений горизонтальний еліпс під основою об'єкта
+        float shadowRadiusX = obj.width * 0.48f;
+        float shadowRadiusY = fmaxf(5.0f, fminf(obj.height * 0.18f, obj.width * 0.20f));
+
+        // Двошарова тінь у тому ж стилі, що й у гравця
+        DrawEllipse(shadowCenterX, shadowCenterY, shadowRadiusX * 1.18f, shadowRadiusY * 1.22f, ColorAlpha(BLACK, 0.20f));
+        DrawEllipse(shadowCenterX, shadowCenterY, shadowRadiusX, shadowRadiusY, ColorAlpha(BLACK, 0.40f));
+    }
+}
+
 void RenderSystem::RenderWorld(const GameMap& gameMap, Player* player, Guard* guard, const FloorTutorialHint* floorHint) {
     // 1. Шари під гравцем (підлога, килими)
     gameMap.DrawBelowPlayer();
@@ -121,9 +143,12 @@ void RenderSystem::RenderWorld(const GameMap& gameMap, Player* player, Guard* gu
         DrawFloorTutorialHint(*floorHint);
     }
 
+    // 1.8 Контактні тіні об'єктів на підлозі
+    const auto& mapObjects = gameMap.GetVisualObjects();
+    DrawObjectShadows(mapObjects);
+
     // 2. Збір об'єктів для сортування
     renderQueue.clear();
-    const auto& mapObjects = gameMap.GetVisualObjects();
     renderQueue.reserve(mapObjects.size() + 2);
 
     for (const auto& obj : mapObjects) {
