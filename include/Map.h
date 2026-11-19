@@ -13,6 +13,7 @@ struct TilesetInfo {
     int tileWidth = 32;
     int tileHeight = 32;
     std::unordered_map<int, Texture2D> individualTextures;
+    std::unordered_map<int, std::vector<Rectangle>> tileCollisions;
 };
 
 struct MapVisualObject {
@@ -42,7 +43,8 @@ struct MapData {
     std::vector<TilesetInfo> tilesets;
     std::vector<std::vector<int>> belowPlayerLayers;
     std::vector<std::vector<int>> abovePlayerLayers;
-    std::vector<Rectangle> collisionRects;
+    std::vector<Rectangle> collisionRects;     // Ручні колізії з окремого шару
+    std::vector<Rectangle> autoCollisionRects; // Автоматичні колізії з тайлів та об'єктів
     std::vector<Rectangle> triggers;
     std::vector<std::string> triggerNames;
     std::unordered_map<std::string, Rectangle> teleportTargets;

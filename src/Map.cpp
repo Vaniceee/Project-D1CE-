@@ -180,8 +180,6 @@ void GameMap::DrawVisualObject(const MapVisualObject& obj) const {
     if (outFlipH) srcRec.width = -srcRec.width;
     if (outFlipV) srcRec.height = -srcRec.height;
 
-    // У Tiled obj.width та obj.height вже вказані у фінальному (повернутому) вигляді на мапі,
-    // тому до повороту на 90/270 градусів неквадратний спрайт має розміри (obj.height, obj.width).
     float preRotWidth = flipD ? obj.height : obj.width;
     float preRotHeight = flipD ? obj.width : obj.height;
 
@@ -197,10 +195,16 @@ void GameMap::DrawVisualObject(const MapVisualObject& obj) const {
 }
 
 void GameMap::DrawDebug() const {
-    // 1. Колізії — напівпрозорий червоний
+    // 1. Ручні колізії з окремого шару — темніший червоний (MAROON)
     for (const auto& rect : data.collisionRects) {
-        DrawRectangleRec(rect, ColorAlpha(RED, 0.35f));
-        DrawRectangleLinesEx(rect, 1.0f, RED);
+        DrawRectangleRec(rect, ColorAlpha(MAROON, 0.45f));
+        DrawRectangleLinesEx(rect, 1.2f, Color{ 165, 20, 35, 255 });
+    }
+
+    // 1.5 Автоматичні колізії всередині тайлів/об'єктів — світліший яскраво-червоний
+    for (const auto& rect : data.autoCollisionRects) {
+        DrawRectangleRec(rect, ColorAlpha(Color{ 255, 85, 85, 255 }, 0.35f));
+        DrawRectangleLinesEx(rect, 1.0f, Color{ 255, 110, 110, 255 });
     }
 
     // 2. Тригери переходів/кімнат — напівпрозорий зелений
@@ -246,6 +250,11 @@ bool GameMap::CheckWallCollision(Rectangle playerHitbox) const {
             return true;
         }
     }
+    for (const auto& rect : data.autoCollisionRects) {
+        if (CheckCollisionRecs(playerHitbox, rect)) {
+            return true;
+        }
+    }
     return false;
 }
 
@@ -268,11 +277,9 @@ bool GameMap::TryGetTeleportDestination(Rectangle playerFootHitbox, Vector2 play
                 if (it != data.teleportTargets.end()) {
                     const Rectangle& targetRect = it->second;
 
-                    // Зміщення ніг відносно верхнього лівого кута спрайта гравця
                     float footOffsetX = playerFootHitbox.x - playerPos.x;
                     float footOffsetY = playerFootHitbox.y - playerPos.y;
 
-                    // Центруємо ноги гравця по центру прямокутника _t
                     float targetFootX = targetRect.x + (targetRect.width - playerFootHitbox.width) * 0.5f;
                     float targetFootY = targetRect.y + (targetRect.height - playerFootHitbox.height) * 0.5f;
 
@@ -305,7 +312,6 @@ bool GameMap::TryGetActiveTriggerCenter(Rectangle footHitbox, Vector2& outTrigge
     return false;
 }
 
-//------------ПОШУК ТРИГЕРУ ДВЕРЕЙ В КІМНАТІ ДЛЯ НПС------------------
 std::vector<Vector2> GameMap::GetAllTriggerCenters() const {
     std::vector<Vector2> centers;
     centers.reserve(data.triggers.size());

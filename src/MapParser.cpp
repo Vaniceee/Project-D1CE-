@@ -1,5 +1,176 @@
 #include "MapParser.h"
 
+namespace {
+    void ParseTilesetTilesData(const std::string& jsonBlock, const std::string& mapDir, TilesetInfo& ts) {
+        size_t tilesArrayPos = jsonBlock.find("\"tiles\":[");
+        if (tilesArrayPos == std::string::npos) return;
+
+        size_t arrEnd = tilesArrayPos + 9;
+        int bracketDepth = 1;
+        while (arrEnd < jsonBlock.size() && bracketDepth > 0) {
+            if (jsonBlock[arrEnd] == '[') bracketDepth++;
+            else if (jsonBlock[arrEnd] == ']') bracketDepth--;
+            arrEnd++;
+        }
+        std::string tilesArrayStr = jsonBlock.substr(tilesArrayPos + 9, arrEnd - (tilesArrayPos + 9) - 1);
+
+        size_t objStart = tilesArrayStr.find('{');
+        while (objStart != std::string::npos) {
+            size_t objEnd = objStart + 1;
+            int braceDepth = 1;
+            while (objEnd < tilesArrayStr.size() && braceDepth > 0) {
+                if (tilesArrayStr[objEnd] == '{') braceDepth++;
+                else if (tilesArrayStr[objEnd] == '}') braceDepth--;
+                objEnd++;
+            }
+
+            std::string tileEntry = tilesArrayStr.substr(objStart, objEnd - objStart);
+
+            size_t idPos = tileEntry.find("\"id\":");
+            if (idPos != std::string::npos) {
+                size_t idStart = idPos + 5;
+                size_t idEnd = tileEntry.find_first_of(",}", idStart);
+                int localId = -1;
+                try { localId = std::stoi(tileEntry.substr(idStart, idEnd - idStart)); }
+                catch (...) { localId = -1; }
+
+                if (localId >= 0) {
+                    // 1. Індивідуальне зображення для Collection of Images
+                    size_t imgPos = tileEntry.find("\"image\":\"");
+                    if (imgPos != std::string::npos) {
+                        size_t imgStart = imgPos + 9;
+                        size_t imgEnd = tileEntry.find("\"", imgStart);
+                        std::string rawImgPath = tileEntry.substr(imgStart, imgEnd - imgStart);
+
+                        std::string key = ts.name + "_" + rawImgPath;
+                        Texture2D tex = AssetManager::Instance().GetTexture(key);
+                        if (tex.id == 0) {
+                            std::string cleanPath = rawImgPath;
+                            std::replace(cleanPath.begin(), cleanPath.end(), '\\', '/');
+                            if (cleanPath.rfind("assets/", 0) != 0) {
+                                cleanPath = mapDir + cleanPath;
+                            }
+                            AssetManager::Instance().LoadTexture(key, cleanPath);
+                            tex = AssetManager::Instance().GetTexture(key);
+                        }
+                        if (tex.id != 0) {
+                            ts.individualTextures[localId] = tex;
+                        }
+                    }
+
+                    // 2. Вбудовані прямокутники колізій всередині тайла/об'єкта (якщо є)
+                    size_t ogPos = tileEntry.find("\"objectgroup\":");
+                    if (ogPos != std::string::npos) {
+                        size_t ogObjsPos = tileEntry.find("\"objects\":[", ogPos);
+                        if (ogObjsPos != std::string::npos) {
+                            size_t ogEnd = ogObjsPos + 11;
+                            int ogDepth = 1;
+                            while (ogEnd < tileEntry.size() && ogDepth > 0) {
+                                if (tileEntry[ogEnd] == '[') ogDepth++;
+                                else if (tileEntry[ogEnd] == ']') ogDepth--;
+                                ogEnd++;
+                            }
+                            std::string ogObjsStr = tileEntry.substr(ogObjsPos + 11, ogEnd - (ogObjsPos + 11) - 1);
+
+                            size_t cStart = ogObjsStr.find('{');
+                            while (cStart != std::string::npos) {
+                                size_t cEnd = cStart + 1;
+                                int cDepth = 1;
+                                while (cEnd < ogObjsStr.size() && cDepth > 0) {
+                                    if (ogObjsStr[cEnd] == '{') cDepth++;
+                                    else if (ogObjsStr[cEnd] == '}') cDepth--;
+                                    cEnd++;
+                                }
+                                std::string cObj = ogObjsStr.substr(cStart, cEnd - cStart);
+
+                                auto getF = [&](const std::string& k) -> float {
+                                    size_t p = cObj.find("\"" + k + "\":");
+                                    if (p == std::string::npos) return 0.0f;
+                                    size_t s = p + k.length() + 3;
+                                    size_t e = cObj.find_first_of(",}", s);
+                                    try { return std::stof(cObj.substr(s, e - s)); }
+                                    catch (...) { return 0.0f; }
+                                    };
+
+                                float w = getF("width");
+                                float h = getF("height");
+                                if (w > 0.0f && h > 0.0f) {
+                                    ts.tileCollisions[localId].push_back({ getF("x"), getF("y"), w, h });
+                                }
+
+                                cStart = ogObjsStr.find('{', cEnd);
+                            }
+                        }
+                    }
+                }
+            }
+
+            objStart = tilesArrayStr.find('{', objEnd);
+        }
+    }
+
+    void AddTileCollisionsToWorld(
+        uint32_t rawGid,
+        float worldTopLeftX,
+        float worldTopLeftY,
+        float targetWidth,
+        float targetHeight,
+        MapData& outData)
+    {
+        constexpr uint32_t FLIP_H = 0x80000000;
+        constexpr uint32_t FLIP_V = 0x40000000;
+        constexpr uint32_t FLIP_D = 0x20000000;
+        constexpr uint32_t ALL_FLAGS = FLIP_H | FLIP_V | FLIP_D;
+
+        uint32_t cleanGid = rawGid & ~ALL_FLAGS;
+        if (cleanGid == 0) return;
+
+        const TilesetInfo* activeTs = nullptr;
+        int localId = 0;
+        for (int i = (int)outData.tilesets.size() - 1; i >= 0; --i) {
+            if (cleanGid >= (uint32_t)outData.tilesets[i].firstgid) {
+                activeTs = &outData.tilesets[i];
+                localId = cleanGid - outData.tilesets[i].firstgid;
+                break;
+            }
+        }
+        if (!activeTs) return;
+
+        auto colIt = activeTs->tileCollisions.find(localId);
+        if (colIt == activeTs->tileCollisions.end()) return;
+
+        float origW = (float)activeTs->tileWidth;
+        float origH = (float)activeTs->tileHeight;
+        auto texIt = activeTs->individualTextures.find(localId);
+        if (texIt != activeTs->individualTextures.end() && texIt->second.id != 0) {
+            origW = (float)texIt->second.width;
+            origH = (float)texIt->second.height;
+        }
+
+        float scaleX = (origW > 0.0f) ? (targetWidth / origW) : 1.0f;
+        float scaleY = (origH > 0.0f) ? (targetHeight / origH) : 1.0f;
+        bool flipH = (rawGid & FLIP_H) != 0;
+        bool flipV = (rawGid & FLIP_V) != 0;
+
+        for (const Rectangle& localCol : colIt->second) {
+            float cw = localCol.width * scaleX;
+            float ch = localCol.height * scaleY;
+            float cx = localCol.x * scaleX;
+            float cy = localCol.y * scaleY;
+
+            if (flipH) cx = targetWidth - (cx + cw);
+            if (flipV) cy = targetHeight - (cy + ch);
+
+            outData.autoCollisionRects.push_back({
+                worldTopLeftX + cx,
+                worldTopLeftY + cy,
+                cw,
+                ch
+                });
+        }
+    }
+}
+
 std::string MapParser::ToLower(std::string str) {
     std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
     return str;
@@ -49,8 +220,8 @@ bool MapParser::Parse(const std::string& mapPath, const std::string& defaultTile
     ParseTileLayers(content, outData);
     ParseObjectLayers(content, outData);
 
-    GAME_INFO("MAP_PARSER", "Map parsed successfully: %s (Size: %dx%d, Tilesets: %zu, Visual Objects: %zu, Interactables: %zu)",
-        mapPath.c_str(), outData.mapWidth, outData.mapHeight, outData.tilesets.size(), outData.visualObjects.size(), outData.interactables.size());
+    GAME_INFO("MAP_PARSER", "Map parsed: %s (Manual cols: %zu, Auto cols: %zu, Visuals: %zu)",
+        mapPath.c_str(), outData.collisionRects.size(), outData.autoCollisionRects.size(), outData.visualObjects.size());
 
     return true;
 }
@@ -64,115 +235,69 @@ void MapParser::ParseTilesets(const std::string& content, const std::string& map
         TilesetInfo ts;
         size_t startVal = tsPos + 11;
         size_t endVal = content.find_first_of(",}", startVal);
-        try {
-            ts.firstgid = std::stoi(content.substr(startVal, endVal - startVal));
-        }
-        catch (...) {
-            ts.firstgid = 1;
-        }
+        try { ts.firstgid = std::stoi(content.substr(startVal, endVal - startVal)); }
+        catch (...) { ts.firstgid = 1; }
 
         size_t nextTsPos = content.find("\"firstgid\":", tsPos + 11);
         std::string tsBlock = (nextTsPos != std::string::npos)
             ? content.substr(tsPos, nextTsPos - tsPos)
             : content.substr(tsPos);
 
-        size_t namePos = tsBlock.find("\"name\":\"");
+        std::string effectiveBlock = tsBlock;
+        std::string effectiveDir = mapDir;
+        size_t srcPos = tsBlock.find("\"source\":\"");
+        if (srcPos != std::string::npos) {
+            size_t sStart = srcPos + 10;
+            size_t sEnd = tsBlock.find("\"", sStart);
+            std::string relSource = tsBlock.substr(sStart, sEnd - sStart);
+            std::replace(relSource.begin(), relSource.end(), '\\', '/');
+            std::string fullTsPath = mapDir + relSource;
+
+            std::ifstream tsFile(fullTsPath);
+            if (tsFile.is_open()) {
+                std::stringstream ss;
+                ss << tsFile.rdbuf();
+                effectiveBlock = ss.str();
+                size_t lastSlash = fullTsPath.find_last_of("/\\");
+                effectiveDir = (lastSlash != std::string::npos) ? fullTsPath.substr(0, lastSlash + 1) : mapDir;
+            }
+            else {
+                GAME_WARN("MAP_PARSER", "External tileset not found (if it's .tsx, export as .tsj or embed it): %s", fullTsPath.c_str());
+            }
+        }
+
+        size_t namePos = effectiveBlock.find("\"name\":\"");
         if (namePos != std::string::npos) {
             size_t nStart = namePos + 8;
-            size_t nEnd = tsBlock.find("\"", nStart);
-            ts.name = tsBlock.substr(nStart, nEnd - nStart);
+            size_t nEnd = effectiveBlock.find("\"", nStart);
+            ts.name = effectiveBlock.substr(nStart, nEnd - nStart);
         }
         else {
             ts.name = "tileset_" + std::to_string(ts.firstgid);
         }
 
-        auto getFieldInCurrentBlock = [&](const std::string& key) -> int {
-            size_t pos = tsBlock.find("\"" + key + "\":");
+        auto getField = [&](const std::string& key) -> int {
+            size_t pos = effectiveBlock.find("\"" + key + "\":");
             if (pos == std::string::npos) return 0;
-            size_t startValue = pos + key.length() + 3;
-            size_t endValue = tsBlock.find_first_of(",}", startValue);
-            try {
-                return std::stoi(tsBlock.substr(startValue, endValue - startValue));
-            }
-            catch (...) {
-                return 0;
-            }
+            size_t sv = pos + key.length() + 3;
+            size_t ev = effectiveBlock.find_first_of(",}", sv);
+            try { return std::stoi(effectiveBlock.substr(sv, ev - sv)); }
+            catch (...) { return 0; }
             };
 
-        int parsedTsW = getFieldInCurrentBlock("tilewidth");
-        int parsedTsH = getFieldInCurrentBlock("tileheight");
-
+        int parsedTsW = getField("tilewidth");
+        int parsedTsH = getField("tileheight");
         ts.tileWidth = (parsedTsW > 0) ? parsedTsW : outData.tileWidth;
         ts.tileHeight = (parsedTsH > 0) ? parsedTsH : outData.tileHeight;
 
-        size_t tilesArrayPos = tsBlock.find("\"tiles\":[");
-        if (tilesArrayPos != std::string::npos) {
-            size_t tSearch = tilesArrayPos + 9;
-            while (true) {
-                size_t idPos = tsBlock.find("\"id\":", tSearch);
-                if (idPos == std::string::npos) break;
+        ParseTilesetTilesData(effectiveBlock, effectiveDir, ts);
 
-                size_t idStart = idPos + 5;
-                size_t idEnd = tsBlock.find_first_of(",}", idStart);
-                int localId = 0;
-                try {
-                    localId = std::stoi(tsBlock.substr(idStart, idEnd - idStart));
-                }
-                catch (...) {
-                    tSearch = idEnd;
-                    continue;
-                }
-
-                size_t imgPos = tsBlock.find("\"image\":\"", idEnd);
-                if (imgPos == std::string::npos) break;
-
-                size_t imgStart = imgPos + 9;
-                size_t imgEnd = tsBlock.find("\"", imgStart);
-                std::string rawImgPath = tsBlock.substr(imgStart, imgEnd - imgStart);
-
-                std::string key = ts.name + "_" + ExtractAssetKey(rawImgPath);
-                Texture2D tex = AssetManager::Instance().GetTexture(key);
-
-                if (tex.id == 0) {
-                    std::string cleanPath = rawImgPath;
-                    std::replace(cleanPath.begin(), cleanPath.end(), '\\', '/');
-
-                    if (cleanPath.rfind("assets/", 0) != 0) {
-                        cleanPath = mapDir + cleanPath;
-                    }
-
-                    AssetManager::Instance().LoadTexture(key, cleanPath);
-                    tex = AssetManager::Instance().GetTexture(key);
-                }
-
-                if (tex.id != 0) {
-                    ts.individualTextures[localId] = tex;
-                }
-                else {
-                    GAME_ERROR("MAP_PARSER", "Failed to load collection image: '%s' (resolved: '%s')",
-                        rawImgPath.c_str(), (mapDir + rawImgPath).c_str());
-                }
-
-                tSearch = imgEnd;
-            }
-            GAME_INFO("MAP_PARSER", "Loaded Collection of Images tileset: '%s' (firstgid: %d, items: %zu)",
-                ts.name.c_str(), ts.firstgid, ts.individualTextures.size());
-        }
-        else {
+        if (ts.individualTextures.empty()) {
             std::string assetKey = ts.name;
             ts.texture = AssetManager::Instance().GetTexture(assetKey);
-
             if (ts.texture.id == 0 && !defaultTilesetKey.empty()) {
                 assetKey = defaultTilesetKey;
                 ts.texture = AssetManager::Instance().GetTexture(assetKey);
-            }
-
-            if (ts.texture.id == 0) {
-                GAME_ERROR("MAP_PARSER", "Failed to load texture for tileset '%s' (firstgid: %d)", ts.name.c_str(), ts.firstgid);
-            }
-            else {
-                GAME_INFO("MAP_PARSER", "Loaded tileset: '%s' (firstgid: %d, size: %dx%d) using key: '%s'",
-                    ts.name.c_str(), ts.firstgid, ts.tileWidth, ts.tileHeight, assetKey.c_str());
             }
         }
 
@@ -188,7 +313,6 @@ void MapParser::ParseTilesets(const std::string& content, const std::string& map
         fallbackTs.tileWidth = outData.tileWidth;
         fallbackTs.tileHeight = outData.tileHeight;
         outData.tilesets.push_back(fallbackTs);
-        GAME_WARN("MAP_PARSER", "No tilesets found in JSON. Using fallback key: '%s'", defaultTilesetKey.c_str());
     }
 }
 
@@ -207,17 +331,31 @@ void MapParser::ParseTileLayers(const std::string& content, MapData& outData) {
 
         std::vector<int> layerData = ParseCSV(content, layerName);
 
+        for (int y = 0; y < outData.mapHeight; ++y) {
+            for (int x = 0; x < outData.mapWidth; ++x) {
+                int idx = x + y * outData.mapWidth;
+                if (idx >= 0 && idx < (int)layerData.size() && layerData[idx] != 0) {
+                    AddTileCollisionsToWorld(
+                        static_cast<uint32_t>(layerData[idx]),
+                        (float)(x * outData.tileWidth),
+                        (float)(y * outData.tileHeight),
+                        (float)outData.tileWidth,
+                        (float)outData.tileHeight,
+                        outData
+                    );
+                }
+            }
+        }
+
         std::string lowerName = ToLower(layerName);
         if (lowerName.find("roof") != std::string::npos ||
             lowerName.find("above") != std::string::npos ||
             lowerName.find("top") != std::string::npos)
         {
             outData.abovePlayerLayers.push_back(layerData);
-            GAME_DEBUG("MAP_PARSER", "Layer '%s' auto-sorted as ABOVE player", layerName.c_str());
         }
         else {
             outData.belowPlayerLayers.push_back(layerData);
-            GAME_DEBUG("MAP_PARSER", "Layer '%s' auto-sorted as BELOW player", layerName.c_str());
         }
 
         searchPos = typePos + 18;
@@ -226,7 +364,7 @@ void MapParser::ParseTileLayers(const std::string& content, MapData& outData) {
 
 void MapParser::ParseObjectLayers(const std::string& content, MapData& outData) {
     size_t searchPos = 0;
-    int visualLayerIndex = 0; // Порядок шарів у Tiled знизу вгору (0, 1, 2...)
+    int visualLayerIndex = 0;
 
     while (true) {
         size_t objArrayPos = content.find("\"objects\":[", searchPos);
@@ -248,7 +386,6 @@ void MapParser::ParseObjectLayers(const std::string& content, MapData& outData) 
             lowerLayerName.find("стін") != std::string::npos)
         {
             ParseRectLayer(content, layerName, outData.collisionRects, nullptr);
-            GAME_DEBUG("MAP_PARSER", "Auto-detected COLLISION layer: '%s'", layerName.c_str());
         }
         else if (lowerLayerName.find("trig") != std::string::npos ||
             lowerLayerName.find("door") != std::string::npos ||
@@ -256,29 +393,24 @@ void MapParser::ParseObjectLayers(const std::string& content, MapData& outData) 
             lowerLayerName.find("двер") != std::string::npos)
         {
             ParseRectLayer(content, layerName, outData.triggers, &outData.triggerNames, &outData.teleportTargets, &outData.interactables);
-            GAME_DEBUG("MAP_PARSER", "Auto-detected TRIGGER layer: '%s'", layerName.c_str());
         }
         else if (lowerLayerName.find("spawn") != std::string::npos ||
             lowerLayerName.find("entit") != std::string::npos)
         {
             ParseSpawnLayer(content, layerName, outData);
-            GAME_DEBUG("MAP_PARSER", "Auto-detected SPAWN layer: '%s'", layerName.c_str());
         }
         else {
-            // Підлогові об'єкти (килими, сліди) отримують -1, решта — природний індекс шару знизу вгору
             int order = (lowerLayerName.find("floor") != std::string::npos ||
                 lowerLayerName.find("carpet") != std::string::npos ||
                 lowerLayerName.find("rug") != std::string::npos)
                 ? -1 : visualLayerIndex++;
 
             ParseVisualObjectLayer(content, layerName, order, outData);
-            GAME_DEBUG("MAP_PARSER", "Auto-detected VISUAL object layer: '%s' (order: %d)", layerName.c_str(), order);
         }
 
         searchPos = objArrayPos + 10;
     }
 
-    // Прив'язка sortY предметів на меблях до основи меблів під ними (один раз при парсингу карти)
     for (auto& topObj : outData.visualObjects) {
         if (topObj.layerOrder <= 0) continue;
 
@@ -395,11 +527,9 @@ void MapParser::ParseSpawnLayer(const std::string& content, const std::string& l
 
             if (spawnName == "player") {
                 outData.playerSpawn = { x, y };
-                GAME_INFO("MAP_PARSER", "Player spawn set to: (%.1f, %.1f)", x, y);
             }
             else if (spawnName == "guard") {
                 outData.guardSpawns.push_back({ x, y });
-                GAME_INFO("MAP_PARSER", "Guard spawn added at: (%.1f, %.1f)", x, y);
             }
         }
 
@@ -466,6 +596,15 @@ void MapParser::ParseVisualObjectLayer(const std::string& content, const std::st
                 vObj.layerOrder = layerOrder;
                 vObj.sortY = vObj.y;
                 outData.visualObjects.push_back(vObj);
+
+                AddTileCollisionsToWorld(
+                    vObj.rawGid,
+                    vObj.x,
+                    vObj.y - vObj.height,
+                    vObj.width,
+                    vObj.height,
+                    outData
+                );
             }
         }
 
@@ -537,7 +676,6 @@ void MapParser::ParseRectLayer(
 
         if (targets && objName.size() > 2 && objName.substr(objName.size() - 2) == "_t") {
             (*targets)[objName] = rect;
-            GAME_INFO("MAP_PARSER", "Registered teleport target '%s' at (%.1f, %.1f)", objName.c_str(), rect.x, rect.y);
         }
         else if (interactables && objName.size() > 2 && objName.substr(objName.size() - 2) == "_i") {
             InteractableObject item;
@@ -548,15 +686,12 @@ void MapParser::ParseRectLayer(
             item.isUsed = false;
 
             interactables->push_back(item);
-            GAME_INFO("MAP_PARSER", "Registered interactable '%s' (type: '%s') at (%.1f, %.1f)",
-                item.fullId.c_str(), item.type.c_str(), rect.x, rect.y);
         }
         else {
             rects.push_back(rect);
             if (names) {
                 names->push_back(objName);
             }
-            GAME_DEBUG("MAP_PARSER", "Registered trigger '%s' at (%.1f, %.1f)", objName.c_str(), rect.x, rect.y);
         }
 
         objStart = objectsText.find("{", objEnd);
