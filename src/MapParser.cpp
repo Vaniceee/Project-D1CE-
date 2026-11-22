@@ -460,7 +460,6 @@ namespace {
                     std::string fullTsPath = ResolveAssetPath(mapDir, relSource);
                     std::string tsText;
 
-                    // Якщо у .tmj посилання на .tsx, пробуємо також поруч .tsj
                     if (!LoadFileToString(fullTsPath, tsText) &&
                         fullTsPath.size() > 4 &&
                         fullTsPath.substr(fullTsPath.size() - 4) == ".tsx")
@@ -492,10 +491,8 @@ namespace {
                 ts.tileWidth = (tw > 0) ? tw : outData.tileWidth;
                 ts.tileHeight = (th > 0) ? th : outData.tileHeight;
 
-                // 1) Collection of images (масив "tiles")
                 ParseTilesetTiles(*effectiveObj, effectiveDir, ts);
 
-                // 2) Звичайний атлас тайлсету (поле "image")
                 if (ts.individualTextures.empty()) {
                     std::string atlasImg = effectiveObj->GetString("image");
                     if (!atlasImg.empty()) {
@@ -514,7 +511,6 @@ namespace {
             }
         }
 
-        // Гарантуємо правильний порядок firstgid для пошуку активного тайлсету
         std::sort(outData.tilesets.begin(), outData.tilesets.end(),
             [](const TilesetInfo& a, const TilesetInfo& b) {
                 return a.firstgid < b.firstgid;
@@ -586,8 +582,6 @@ namespace {
             vObj.layerOrder = layerOrder;
             vObj.sortY = vObj.y;
             outData.visualObjects.push_back(vObj);
-
-            AddTileCollisionsToWorld(vObj.rawGid, vObj.x, vObj.y - vObj.height, vObj.width, vObj.height, outData);
         }
     }
 
@@ -627,7 +621,6 @@ namespace {
         }
     }
 
-    // Рекурсивний парсинг шарів (підтримує group-шари з вкладеним "layers")
     void ParseLayersRecursive(
         const JsonValue::Array& layersArr,
         int& visualLayerIndex,
@@ -668,7 +661,6 @@ namespace {
                     if (cell.type == JsonValue::Type::Number && cell.numVal > 0.0) {
                         rawGid = static_cast<uint32_t>(cell.numVal);
                     }
-                    // Безпечне збереження бітового представлення uint32_t в int без UB
                     layerData.push_back(static_cast<int>(rawGid));
                 }
 
@@ -688,7 +680,6 @@ namespace {
                     }
                 }
 
-                // Невидимі tile-шари не додаємо в рендер (але колізії вище зчитали, якщо треба)
                 if (!isVisible) continue;
 
                 if (lowerName.find("roof") != std::string::npos ||
@@ -739,23 +730,35 @@ namespace {
 
     void ApplySupportSorting(MapData& outData) {
         for (auto& topObj : outData.visualObjects) {
-            if (topObj.layerOrder <= 0) continue;
-
-            float footX = topObj.x + topObj.width * 0.5f;
-            float footY = topObj.y;
             const MapVisualObject* bestSupport = nullptr;
 
-            for (const auto& baseObj : outData.visualObjects) {
-                if (baseObj.layerOrder < 0 || baseObj.layerOrder >= topObj.layerOrder) continue;
-                if (footX >= baseObj.x && footX <= baseObj.x + baseObj.width &&
-                    footY >= baseObj.y - baseObj.height && footY <= baseObj.y) {
-                    if (!bestSupport || baseObj.sortY > bestSupport->sortY) {
-                        bestSupport = &baseObj;
+            if (topObj.layerOrder > 0) {
+                float footX = topObj.x + topObj.width * 0.5f;
+                float footY = topObj.y;
+
+                for (const auto& baseObj : outData.visualObjects) {
+                    if (baseObj.layerOrder < 0 || baseObj.layerOrder >= topObj.layerOrder) continue;
+                    if (footX >= baseObj.x && footX <= baseObj.x + baseObj.width &&
+                        footY >= baseObj.y - baseObj.height && footY <= baseObj.y) {
+                        if (!bestSupport || baseObj.sortY > bestSupport->sortY) {
+                            bestSupport = &baseObj;
+                        }
                     }
                 }
             }
+
             if (bestSupport) {
                 topObj.sortY = bestSupport->sortY;
+            }
+            else {
+                AddTileCollisionsToWorld(
+                    topObj.rawGid,
+                    topObj.x,
+                    topObj.y - topObj.height,
+                    topObj.width,
+                    topObj.height,
+                    outData
+                );
             }
         }
     }
