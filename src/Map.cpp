@@ -1,6 +1,7 @@
 #include "Map.h"
 #include "MapParser.h"
 #include "Logger.h"
+#include "Keys.h"
 
 bool GameMap::Load(const std::string& mapPath, const std::string& defaultTilesetKey) {
     Unload();
@@ -265,6 +266,62 @@ void GameMap::UpdateTriggers(Rectangle playerHitbox) {
             currentTriggerMessage = (i < data.triggerNames.size()) ? data.triggerNames[i] : "unknown";
             break;
         }
+    }
+}
+
+
+//---------- Розподіл спавну ключів --------------
+void GameMap::DistributeLoot() {
+    std::vector<InteractableObject*> outerLockers;
+    std::vector<InteractableObject*> guardRoomLockers;
+    InteractableObject* guardSafe = nullptr;
+
+    for (auto& obj : data.interactables) {
+        if (obj.type == "lock") {
+            if (obj.fullId == "lock_8" || obj.fullId == "lock_9") {
+                guardRoomLockers.push_back(&obj);
+            }
+            else {
+                outerLockers.push_back(&obj);
+            }
+        }
+        else if (obj.type == "safe") {
+            guardSafe = &obj;
+        }
+    }
+
+    // 1. Ключ від кімнати охоронця — у зовнішніх шафках
+    if (!outerLockers.empty()) {
+        int idx = GetRandomValue(0, (int)outerLockers.size() - 1);
+        InteractableObject* chosen = outerLockers[idx];
+        Vector2 pos = { chosen->bounds.x + chosen->bounds.width * 0.5f, chosen->bounds.y + chosen->bounds.height * 0.5f };
+        chosen->storedItem = std::make_shared<RoomKey>(pos);
+        GAME_INFO("LOOT", "Spawned '%s' inside '%s'", chosen->storedItem->GetName().c_str(), chosen->fullId.c_str());
+    }
+    else {
+        GAME_WARN("LOOT", "No outer lockers found for RoomKey!");
+    }
+
+    // 2. Картка від сейфа — у шафках кімнати охоронця (lock_8 або lock_9)
+    if (!guardRoomLockers.empty()) {
+        int idx = GetRandomValue(0, (int)guardRoomLockers.size() - 1);
+        InteractableObject* chosen = guardRoomLockers[idx];
+        Vector2 pos = { chosen->bounds.x + chosen->bounds.width * 0.5f, chosen->bounds.y + chosen->bounds.height * 0.5f };
+        chosen->storedItem = std::make_shared<SafeKeyCard>(pos);
+        GAME_INFO("LOOT", "Spawned '%s' inside '%s'", chosen->storedItem->GetName().c_str(), chosen->fullId.c_str());
+    }
+    else {
+        GAME_WARN("LOOT", "No guard room lockers (lock_8/lock_9) found for SafeKeyCard!");
+    }
+
+    // 3. Головний ключ від виходу — у сейфі
+    if (guardSafe != nullptr) {
+        Vector2 pos = { guardSafe->bounds.x + guardSafe->bounds.width * 0.5f, guardSafe->bounds.y + guardSafe->bounds.height * 0.5f };
+        guardSafe->storedItem = std::make_shared<MasterKey>(pos);
+        GAME_INFO("LOOT", "Spawned '%s' inside '%s'", guardSafe->storedItem->GetName().c_str(), guardSafe->fullId.c_str());
+    }
+    else {
+        GAME_WARN("LOOT", "No safe found for MasterKey!");
     }
 }
 

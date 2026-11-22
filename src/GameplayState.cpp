@@ -3,6 +3,7 @@
 #include "GameOverState.h"
 #include "GameManager.h"
 #include "InputManager.h"
+#include "VictoryState.h"
 #include "Logger.h"
 #include "Dice.h"
 
@@ -19,41 +20,47 @@ void GameplayState::SyncShaderCameraUniforms() {
 }
 
 void GameplayState::OnInteract(InteractableObject& obj) {
-
-    // Перевіряємо, чи об'єкт вже відкритий
     if (obj.isUsed) {
-        GAME_INFO("INTERACT",
-            "Object '%s' is already opened!",
-            obj.fullId.c_str());
+        GAME_INFO("INTERACT", "Object '%s' is already opened!", obj.fullId.c_str());
         return;
     }
 
-    // Перевіряємо тип об'єкта
+    // --- ФІНАЛЬНІ ВИХІДНІ ДВЕРІ (exit_door_i -> type == "exit") ---
+    if (obj.type == "exit") {
+        if (!player->HasItem("MasterKey")) {
+            ShowStatusNotification("Locked! Master Key required to escape.", RED, 2.5f);
+            GAME_INFO("INTERACT", "Exit door '%s' locked: missing MasterKey.", obj.fullId.c_str());
+            return;
+        }
+
+        obj.isUsed = true;
+        isVictoryTriggered = true;
+        GAME_INFO("INTERACT", "Player escaped through '%s' with MasterKey! Victory triggered.", obj.fullId.c_str());
+        return;
+    }
+
+    // --- ПЕРЕВІРКА КАРТКИ ДЛЯ СЕЙФА ---
+    if (obj.type == "safe" && !player->HasItem("SafeKeyCard")) {
+        ShowStatusNotification("Locked! Safe Key Card required.", RED, 2.5f);
+        GAME_INFO("INTERACT", "Safe '%s' locked: missing SafeKeyCard.", obj.fullId.c_str());
+        return;
+    }
+
+    // --- ПЕРЕВІРКА ТИПУ ОБ'ЄКТА ДЛЯ КУБИКІВ ---
     if (obj.type != "lock" && obj.type != "safe") {
-        GAME_INFO("INTERACT",
-            "This object cannot be opened with dice.");
+        GAME_INFO("INTERACT", "This object cannot be opened with dice.");
         return;
     }
 
     // Кидаємо два кубики
     lastDice1 = Dice::Roll();
     lastDice2 = Dice::Roll();
-
-    // Обчислюємо суму
     lastDiceSum = lastDice1 + lastDice2;
-
-    // Запускаємо відображення результату на 2 секунди
     sumDisplayTimer = sumDisplayDuration;
 
-    GAME_INFO("DICE",
-        "Dice: %d + %d = %d",
-        lastDice1,
-        lastDice2,
-        lastDiceSum);
+    GAME_INFO("DICE", "Dice: %d + %d = %d", lastDice1, lastDice2, lastDiceSum);
 
-    // Перевіряємо можливість відкриття
     bool opened = false;
-
     if (obj.type == "lock" && lastDiceSum >= 7) {
         opened = true;
     }
@@ -61,22 +68,41 @@ void GameplayState::OnInteract(InteractableObject& obj) {
         opened = true;
     }
 
-    // Відкриваємо об'єкт або повідомляємо про невдачу
     if (opened) {
-
         obj.isUsed = true;
 
-        GAME_INFO("INTERACT",
-            "Object '%s' opened successfully!",
-            obj.fullId.c_str());
-    }
-    else {
+        if (obj.storedItem != nullptr) {
+            std::string itemName = obj.storedItem->GetName();
+            player->AddItem(std::move(obj.storedItem));
 
-        GAME_INFO("INTERACT",
-            "Failed to open '%s'. Dice sum: %d. Try again!",
-            obj.fullId.c_str(),
-            lastDiceSum);
+            if (itemName == "RoomKey") {
+                ShowStatusNotification("Found: Guard Room Key!", GREEN, 3.0f);
+            }
+            else if (itemName == "SafeKeyCard") {
+                ShowStatusNotification("Found: Safe Key Card!", GREEN, 3.0f);
+            }
+            else if (itemName == "MasterKey") {
+                ShowStatusNotification("Found: Master Key!", GOLD, 3.0f);
+            }
+            else {
+                ShowStatusNotification("Found: " + itemName, GREEN, 2.5f);
+            }
+
+            GAME_INFO("INTERACT", "Object '%s' opened! Obtained '%s'.",
+                obj.fullId.c_str(), itemName.c_str());
+        }
+        else {
+            ShowStatusNotification("Empty...", LIGHTGRAY, 1.5f);
+            GAME_INFO("INTERACT", "Object '%s' opened successfully (empty).",
+                obj.fullId.c_str());
+        }
     }
+}
+
+void GameplayState::ShowStatusNotification(const std::string& text, Color color, float duration) {
+    statusNotificationText = text;
+    statusNotificationColor = color;
+    statusNotificationTimer = duration;
 }
 
 void GameplayState::Init() {
@@ -137,9 +163,11 @@ void GameplayState::Init() {
 
     hudUI.Init();
     gameMap.Load(Config::PATH_MAP);
+    gameMap.DistributeLoot();
+    statusNotificationTimer = 0.0f;
 
     Vector2 startPos = gameMap.GetPlayerSpawn();
-    player = std::make_unique<Player>(startPos, 112.0f, 32.0f, 64.0f, am.GetTexture("player_spritesheet"), 1.45f);
+    player = std::make_unique<Player>(startPos, 212.0f, 32.0f, 64.0f, am.GetTexture("player_spritesheet"), 1.45f);
 
     Rectangle startFoot = player->GetFootCollider();
     lightWorldPos = {
@@ -270,6 +298,12 @@ void GameplayState::UpdateDeathSequence(float dt) {
 
 void GameplayState::Update() {
     float dt = GetFrameTime();
+
+    if (isVictoryTriggered) {
+        GameManager::Instance().ChangeState(new VictoryState());
+        return;
+    }
+
 
     if (sumDisplayTimer > 0.0f) {
         sumDisplayTimer -= dt;
@@ -468,22 +502,42 @@ void GameplayState::Update() {
         }
     }
 
+    if (statusNotificationTimer > 0.0f) {
+        statusNotificationTimer -= dt;
+        if (statusNotificationTimer < 0.0f) statusNotificationTimer = 0.0f;
+    }
+
     gameMap.UpdateTriggers(footCollider);
-    bool isInTriggerNow = !gameMap.GetCurrentTriggerMessage().empty();
+    const std::string& currentTrigger = gameMap.GetCurrentTriggerMessage();
+    bool isInTriggerNow = !currentTrigger.empty();
 
     if (tpPhase == TeleportPhase::NONE) {
         if (isInTriggerNow && !wasInTrigger) {
-            Vector2 newPlayerPos;
-            if (gameMap.TryGetTeleportDestination(footCollider, player->GetPosition(), newPlayerPos)) {
-                Vector2 enteredTriggerCenter;
-                if (guard && gameMap.TryGetActiveTriggerCenter(footCollider, enteredTriggerCenter)) {
-                    guard->OnPlayerTeleported(enteredTriggerCenter);
-                }
-
-                player->ResetVelocity();
-                pendingTeleportPos = newPlayerPos;
-                tpPhase = TeleportPhase::FADING_OUT;
+            // 1. Вхід у кімнату охоронця (потрібен RoomKey)
+            if (currentTrigger == "room3_in" && !player->HasItem("RoomKey")) {
+                ShowStatusNotification("Locked! Guard Room Key required.", RED, 2.5f);
+                GAME_INFO("TELEPORT", "Blocked entry to '%s': missing RoomKey.", currentTrigger.c_str());
                 wasInTrigger = true;
+            }
+            // 2. Вхід у фінальну кімнату (потрібен MasterKey)
+            else if (currentTrigger == "final_in" && !player->HasItem("MasterKey")) {
+                ShowStatusNotification("Locked! Master Key required.", RED, 2.5f);
+                GAME_INFO("TELEPORT", "Blocked entry to '%s': missing MasterKey.", currentTrigger.c_str());
+                wasInTrigger = true;
+            }
+            else {
+                Vector2 newPlayerPos;
+                if (gameMap.TryGetTeleportDestination(footCollider, player->GetPosition(), newPlayerPos)) {
+                    Vector2 enteredTriggerCenter;
+                    if (guard && gameMap.TryGetActiveTriggerCenter(footCollider, enteredTriggerCenter)) {
+                        guard->OnPlayerTeleported(enteredTriggerCenter);
+                    }
+
+                    player->ResetVelocity();
+                    pendingTeleportPos = newPlayerPos;
+                    tpPhase = TeleportPhase::FADING_OUT;
+                    wasInTrigger = true;
+                }
             }
         }
         else if (!isInTriggerNow) {
@@ -736,6 +790,18 @@ void GameplayState::Draw() {
                 hintSize,
                 YELLOW
             );
+        }
+
+        // --- СПОВІЩЕННЯ ПРО ЗНАЙДЕНІ КЛЮЧІ / ЗАЧИНЕНІ ДВЕРІ ---
+        if (statusNotificationTimer > 0.0f && !statusNotificationText.empty() && !isPaused && !isDying) {
+            int notifSize = 24;
+            int notifWidth = MeasureText(statusNotificationText.c_str(), notifSize);
+            int posX = (int)(windowWidth - notifWidth) / 2;
+            int posY = (int)(windowHeight - 165);
+
+            DrawRectangle(posX - 14, posY - 6, notifWidth + 28, notifSize + 12, Fade(BLACK, 0.75f));
+            DrawRectangleLines(posX - 14, posY - 6, notifWidth + 28, notifSize + 12, Fade(statusNotificationColor, 0.85f));
+            DrawText(statusNotificationText.c_str(), posX, posY, notifSize, statusNotificationColor);
         }
 
         if (showDebugOverlay) {

@@ -6,6 +6,7 @@
 #include "raymath.h"
 #include <string>
 #include <cmath>
+#include "Logger.h"
 
 Player::Player(Vector2 startPos, float startSpeed, float width, float height, Texture2D tex, float playerScale)
     : Entity(startPos, startSpeed, width, height), currentSpeed(startSpeed), texture(tex), scale(playerScale) {
@@ -13,6 +14,24 @@ Player::Player(Vector2 startPos, float startSpeed, float width, float height, Te
     velocity = { 0.0f, 0.0f };
     RecalculateFootCollider();
 }
+
+
+void Player::AddItem(std::shared_ptr<Item> item) {
+    if (!item) return;
+    item->SetPickedUp(true);
+    GAME_INFO("INVENTORY", "Picked up item: '%s'", item->GetName().c_str());
+    inventory.push_back(std::move(item));
+}
+
+bool Player::HasItem(const std::string& itemName) const {
+    for (const auto& item : inventory) {
+        if (item && item->GetName() == itemName) {
+            return true;
+        }
+    }
+    return false;
+}
+
 
 void Player::ResetVelocity() {
     velocity = { 0.0f, 0.0f };

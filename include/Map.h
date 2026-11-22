@@ -1,10 +1,12 @@
 #pragma once
 
 #include "raylib.h"
+#include "Item.h"
 #include <vector>
 #include <string>
 #include <unordered_map>
 #include <cstdint>
+#include <memory>
 
 struct TilesetInfo {
     int firstgid = 1;
@@ -31,6 +33,7 @@ struct InteractableObject {
     std::string type;         // Наприклад, "locker", "safe", "terminal" (частина до першого '_')
     Rectangle bounds = { 0 }; // Зона спрацьовування перед об'єктом
     bool isUsed = false;      // Прапорець стану (чи вже взаємодіяли)
+    std::shared_ptr<Item> storedItem = nullptr; // Предмет всередині
 };
 
 // Контейнер для всіх даних, які наповнює MapParser
@@ -67,6 +70,7 @@ public:
     void DrawDebug() const;
 
     // Ігрова логіка
+    void DistributeLoot();
     bool CheckWallCollision(Rectangle playerHitbox) const;
     void UpdateTriggers(Rectangle playerHitbox);
     bool TryGetTeleportDestination(Rectangle playerFootHitbox, Vector2 playerPos, Vector2& outNewPlayerPos) const;

@@ -31,6 +31,12 @@ private:
 
     // --- ВЗАЄМОДІЯ З ОБ'ЄКТАМИ ---
     bool showInteractHint = false;
+    // --- СПОВІЩЕННЯ ПРО ПРЕДМЕТИ / ЗАЧИНЕНІ ДВЕРІ ---
+    std::string statusNotificationText = "";
+    Color statusNotificationColor = YELLOW;
+    float statusNotificationTimer = 0.0f;
+
+    void ShowStatusNotification(const std::string& text, Color color, float duration = 2.5f);
 
     // --- ВІДОБРАЖЕННЯ РЕЗУЛЬТАТУ КУБИКІВ ---
     int lastDice1 = 0;
@@ -130,4 +136,7 @@ private:
     Vector2 pendingTeleportPos = { 0.0f, 0.0f };
     bool waitForKeysRelease = false;
     bool wasInTrigger = false;
+
+
+    bool isVictoryTriggered = false;
 };

@@ -1,5 +1,9 @@
 #pragma once
 #include "Entity.h"
+#include "Item.h"
+#include <vector>
+#include <memory>
+#include <string>
 #include "InputManager.h"
 #include "AssetManager.h"
 
@@ -21,6 +25,11 @@ public:
     float GetScale() const { return scale; }
     void ResetVelocity();
 
+    // --- ²ÍÂÅÍÒÀĞ ---
+    void AddItem(std::shared_ptr<Item> item);
+    bool HasItem(const std::string& itemName) const;
+    const std::vector<std::shared_ptr<Item>>& GetInventory() const { return inventory; }
+
     //-------Æèòòÿ òà óğîí------------
     int GetLives() const { return lives; }
     bool IsInvincible() const { return isInvincible; }
@@ -37,6 +46,11 @@ public:
 private:
     float currentSpeed;
     float scale = 1.0f;
+
+
+
+    //--------²ÍÂÅÍÒÀĞ----------
+    std::vector<std::shared_ptr<Item>> inventory;
 
     // --- ²ÍÅĞÖ²ß ÒÀ Ô²ÇÈÊÀ ĞÓÕÓ ---
     Vector2 velocity = { 0.0f, 0.0f };
