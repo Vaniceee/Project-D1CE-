@@ -38,26 +38,117 @@ namespace {
         }
     }
 
-    // Тимчасова векторна заглушка іконки, поки текстура не завантажена
-    void DrawPlaceholderKeyGlyph(int slotIndex, Vector2 center, float size, Color col) {
+    void DrawKeyGlyph(int slotIndex, Vector2 center, float size, Color col, bool owned, float animTime) {
+        float bobY = owned ? sinf(animTime * 3.2f + (float)slotIndex * 1.4f) * 1.8f : 0.0f;
+        Vector2 c = { center.x, center.y + bobY };
+        Color shadowCol = Fade(BLACK, owned ? 0.65f : 0.25f);
+        Color innerDark = owned ? Color{ 12, 13, 17, 240 } : Color{ 10, 11, 14, 180 };
+
         if (slotIndex == 0) {
-            // RoomKey — силует ключа
-            DrawCircleLinesV({ center.x - size * 0.22f, center.y }, size * 0.22f, col);
-            DrawLineEx({ center.x, center.y }, { center.x + size * 0.36f, center.y }, 2.0f, col);
-            DrawLineEx({ center.x + size * 0.22f, center.y }, { center.x + size * 0.22f, center.y + size * 0.18f }, 2.0f, col);
-            DrawLineEx({ center.x + size * 0.34f, center.y }, { center.x + size * 0.34f, center.y + size * 0.18f }, 2.0f, col);
+            // =================================================================
+            // ROOM KEY: Фігурний латунний ключ Art Deco з ромбоподібною головкою
+            // =================================================================
+            Vector2 headPos = { c.x - size * 0.22f, c.y };
+            float headR = size * 0.24f;
+
+            // Тінь
+            DrawPoly({ headPos.x + 1.5f, headPos.y + 2.0f }, 4, headR, 0.0f, shadowCol);
+            DrawLineEx({ headPos.x + 1.5f, headPos.y + 2.0f }, { c.x + size * 0.38f + 1.5f, c.y + 2.0f }, 3.2f, shadowCol);
+
+            // Стрижень та комірець
+            DrawLineEx({ headPos.x + headR * 0.65f, c.y }, { c.x + size * 0.38f, c.y }, 3.0f, col);
+            DrawLineEx({ c.x + size * 0.04f, c.y - size * 0.09f }, { c.x + size * 0.04f, c.y + size * 0.09f }, 2.2f, col);
+
+            // Зубці борідки
+            DrawLineEx({ c.x + size * 0.21f, c.y }, { c.x + size * 0.21f, c.y + size * 0.16f }, 2.4f, col);
+            DrawLineEx({ c.x + size * 0.34f, c.y }, { c.x + size * 0.34f, c.y + size * 0.21f }, 2.6f, col);
+            DrawLineEx({ c.x + size * 0.28f, c.y }, { c.x + size * 0.28f, c.y + size * 0.11f }, 2.0f, col);
+
+            // Головка ключа (подвійний ромб із вирізом)
+            DrawPoly(headPos, 4, headR, 0.0f, col);
+            DrawPoly(headPos, 4, headR * 0.46f, 0.0f, innerDark);
+
+            if (owned) {
+                DrawLineEx(
+                    { headPos.x + headR * 0.7f, c.y - 1.0f },
+                    { c.x + size * 0.35f, c.y - 1.0f },
+                    1.0f,
+                    ColorAlpha(WHITE, 0.55f)
+                );
+            }
         }
         else if (slotIndex == 1) {
-            // SafeKeyCard — перфорована картка
-            Rectangle card = { center.x - size * 0.34f, center.y - size * 0.24f, size * 0.68f, size * 0.48f };
-            DrawRectangleLinesEx(card, 1.6f, col);
-            DrawLineEx({ card.x + 3.0f, card.y + card.height * 0.35f }, { card.x + card.width - 3.0f, card.y + card.height * 0.35f }, 2.2f, col);
-            DrawPoly({ card.x + card.width * 0.72f, card.y + card.height * 0.68f }, 4, 3.2f, 0.0f, col);
+            // =================================================================
+            // SAFE CARD: Перфорована магнітна ключ-картка з чипом і переливом
+            // =================================================================
+            float cardW = size * 0.76f;
+            float cardH = size * 0.52f;
+            Rectangle card = { c.x - cardW * 0.5f, c.y - cardH * 0.5f, cardW, cardH };
+
+            // Тінь та основа картки
+            DrawRectangleRounded({ card.x + 1.5f, card.y + 2.0f, card.width, card.height }, 0.16f, 4, shadowCol);
+            DrawRectangleRounded(card, 0.16f, 4, innerDark);
+            DrawRectangleRoundedLinesEx(card, 0.16f, 4, 1.6f, col);
+
+            // Магнітна смуга зверху
+            DrawRectangle(
+                (int)(card.x + 2.0f),
+                (int)(card.y + card.height * 0.22f),
+                (int)(card.width - 4.0f),
+                (int)(card.height * 0.20f),
+                ColorAlpha(col, owned ? 0.38f : 0.20f)
+            );
+
+            // Золотистий чип зліва знизу
+            Rectangle chip = { card.x + card.width * 0.14f, card.y + card.height * 0.54f, card.width * 0.22f, card.height * 0.26f };
+            DrawRectangleRec(chip, ColorAlpha(GOLD, owned ? 0.85f : 0.20f));
+            DrawRectangleLinesEx(chip, 0.9f, innerDark);
+
+            // Перфорація (3 отвори справа знизу)
+            for (int p = 0; p < 3; ++p) {
+                float px = card.x + card.width * (0.52f + (float)p * 0.14f);
+                float py = card.y + card.height * 0.67f;
+                DrawCircleV({ px, py }, 1.7f, col);
+            }
+
+            // Діагональний відблиск по склу картки
+            if (owned) {
+                float sweep = fmodf(animTime * 0.8f, 2.2f) - 0.6f;
+                float sx = card.x + Clamp(sweep, 0.0f, 1.0f) * card.width;
+                if (sweep > 0.0f && sweep < 1.0f) {
+                    DrawLineEx(
+                        { sx - 3.0f, card.y + card.height - 2.0f },
+                        { sx + 3.0f, card.y + 2.0f },
+                        2.5f,
+                        ColorAlpha(WHITE, 0.35f)
+                    );
+                }
+            }
         }
         else {
-            // MasterKey — подвійний золотий ромб
-            DrawPolyLinesEx(center, 4, size * 0.36f, 0.0f, 1.8f, col);
-            DrawPoly(center, 4, size * 0.16f, 0.0f, col);
+            // =================================================================
+            // MASTER KEY: Багатошарова королівська емблема казино (VIP Access)
+            // =================================================================
+            float outerR = size * 0.39f;
+            float rot = owned ? animTime * 14.0f : 0.0f;
+
+            // Тінь
+            DrawPoly({ c.x + 1.5f, c.y + 2.0f }, 4, outerR, 0.0f, shadowCol);
+
+            // Зовнішній обертовий променевий контур
+            DrawPolyLinesEx(c, 4, outerR, 45.0f + rot, 1.1f, ColorAlpha(col, owned ? 0.45f : 0.20f));
+
+            // Основний подвійний ромб
+            DrawPoly(c, 4, outerR * 0.88f, 0.0f, innerDark);
+            DrawPolyLinesEx(c, 4, outerR * 0.88f, 0.0f, 1.8f, col);
+            DrawPolyLinesEx(c, 4, outerR * 0.64f, 0.0f, 1.1f, ColorAlpha(col, 0.65f));
+
+            // Центральний кристал / серцевина
+            float corePulse = owned ? (1.0f + 0.12f * sinf(animTime * 4.5f)) : 1.0f;
+            DrawPoly(c, 4, outerR * 0.32f * corePulse, 0.0f, col);
+            if (owned) {
+                DrawPoly(c, 4, outerR * 0.14f, 0.0f, WHITE);
+            }
         }
     }
 }
@@ -321,15 +412,14 @@ void GameplayUI::DrawArtDecoButton(const UiButton& btn, float animTime) {
 void GameplayUI::DrawInventorySlots(const GameplayHudData& data, float screenW, float screenH) const {
     struct SlotInfo {
         bool owned;
-        const char* texKey;
         const char* shortLabel;
         Color activeColor;
     };
 
     const SlotInfo slots[3] = {
-        { data.hasRoomKey,     "icon_room_key",   "ROOM KEY",   GOLD },
-        { data.hasSafeKeyCard, "icon_safe_card",  "SAFE CARD",  Color{ 110, 225, 175, 255 } },
-        { data.hasMasterKey,   "icon_master_key", "MASTER KEY", Color{ 255, 226, 110, 255 } }
+        { data.hasRoomKey,     "ROOM KEY",   GOLD },
+        { data.hasSafeKeyCard, "SAFE CARD",  Color{ 110, 225, 175, 255 } },
+        { data.hasMasterKey,   "MASTER KEY", Color{ 255, 226, 110, 255 } }
     };
 
     const float slotSize = 56.0f;
@@ -378,24 +468,9 @@ void GameplayUI::DrawInventorySlots(const GameplayHudData& data, float screenW, 
             DrawPoly({ inner.x + inner.width, inner.y + inner.height }, 4, 2.8f, 0.0f, accent);
         }
 
-        // Текстура предмета (якщо вже додана) або стилізована заглушка
-        Texture2D iconTex = AssetManager::Instance().GetTexture(slots[i].texKey);
-        if (iconTex.id > 0) {
-            float pad = 9.0f;
-            float avail = slotSize - pad * 2.0f;
-            float scale = fminf(avail / (float)iconTex.width, avail / (float)iconTex.height);
-            float drawW = (float)iconTex.width * scale;
-            float drawH = (float)iconTex.height * scale;
-
-            Rectangle src = { 0.0f, 0.0f, (float)iconTex.width, (float)iconTex.height };
-            Rectangle dst = { center.x - drawW * 0.5f, center.y - drawH * 0.5f, drawW, drawH };
-            Color tint = owned ? WHITE : ColorAlpha(WHITE, 0.14f);
-            DrawTexturePro(iconTex, src, dst, { 0.0f, 0.0f }, 0.0f, tint);
-        }
-        else {
-            Color glyphCol = owned ? accent : ColorAlpha(GRAY, 0.22f);
-            DrawPlaceholderKeyGlyph(i, center, slotSize * 0.72f, glyphCol);
-        }
+        // Векторна іконка предмета
+        Color glyphCol = owned ? accent : ColorAlpha(GRAY, 0.24f);
+        DrawKeyGlyph(i, center, slotSize * 0.74f, glyphCol, owned, data.shaderTime);
 
         // Підпис під слотом
         const char* subText = owned ? slots[i].shortLabel : "EMPTY";
