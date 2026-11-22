@@ -18,14 +18,24 @@ struct TilesetInfo {
     std::unordered_map<int, std::vector<Rectangle>> tileCollisions;
 };
 
+enum class VisualCategory {
+    FloorDeco,  // Завжди під гравцем і меблями, без тіні та автоколізії
+    Furniture,  // Y-сортування по obj.y, є тінь і автоколізія
+    SmallDeco,  // Якщо центр низу на Furniture -> sortY = table.sortY + 0.01f * subOrder (без тіні/колізії); інакше -> свій obj.y + тінь + колізія
+    WallDeco    // Y-сортування по obj.y, без прив'язки до меблів, без тіні та автоколізії
+};
+
 struct MapVisualObject {
     uint32_t rawGid = 0;
     float x = 0.0f;
     float y = 0.0f; // У Tiled для тайл-об'єктів це НИЖНІЙ лівий кут
     float width = 0.0f;
     float height = 0.0f;
+    VisualCategory category = VisualCategory::Furniture;
     int layerOrder = 0;
+    int subOrder = 0;
     float sortY = 0.0f;
+    bool hasShadow = true;
 };
 
 struct InteractableObject {

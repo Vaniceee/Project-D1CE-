@@ -114,11 +114,7 @@ void RenderSystem::DrawFloorTutorialHint(const FloorTutorialHint& hint) const {
 
 void RenderSystem::DrawObjectShadows(const std::vector<MapVisualObject>& mapObjects) const {
     for (const auto& obj : mapObjects) {
-        // Пропускаємо підлоговий декор (килими тощо мають layerOrder = -1)
-        if (obj.layerOrder < 0) continue;
-
-        // Пропускаємо дрібні предмети, що стоять зверху на столах (у них sortY змінено відносно obj.y)
-        if (std::abs(obj.sortY - obj.y) > 0.1f) continue;
+        if (!obj.hasShadow) continue;
 
         // У Tiled obj.x та obj.y — це нижній лівий кут об'єкта
         int shadowCenterX = (int)roundf(obj.x + obj.width * 0.5f);
@@ -152,7 +148,8 @@ void RenderSystem::RenderWorld(const GameMap& gameMap, Player* player, Guard* gu
     renderQueue.reserve(mapObjects.size() + 2);
 
     for (const auto& obj : mapObjects) {
-        renderQueue.push_back({ obj.sortY, obj.layerOrder, RenderItem::Type::MAP_OBJECT, &obj });
+        int order = (obj.category == VisualCategory::FloorDeco) ? -1 : obj.layerOrder;
+        renderQueue.push_back({ obj.sortY, order, RenderItem::Type::MAP_OBJECT, &obj });
     }
 
     if (player) {
@@ -166,7 +163,7 @@ void RenderSystem::RenderWorld(const GameMap& gameMap, Player* player, Guard* gu
     }
 
     // 3. Сортування:
-    // - Підлогові об'єкти (order < 0) завжди під ногами.
+    // - Підлогові об'єкти (FloorDeco, order < 0) завжди під ногами.
     // - Решта сортується по sortY (при збігу — за природним порядком шарів у Tiled).
     std::sort(renderQueue.begin(), renderQueue.end(), [](const RenderItem& a, const RenderItem& b) {
         bool aIsFloor = (a.order < 0);
@@ -175,7 +172,7 @@ void RenderSystem::RenderWorld(const GameMap& gameMap, Player* player, Guard* gu
             return aIsFloor;
         }
 
-        if (std::abs(a.sortY - b.sortY) < 0.01f) {
+        if (std::abs(a.sortY - b.sortY) < 0.0001f) {
             return a.order < b.order;
         }
         return a.sortY < b.sortY;

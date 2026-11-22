@@ -339,6 +339,23 @@ namespace {
         return AssetManager::Instance().GetTexture(key);
     }
 
+    VisualCategory DetectVisualCategory(const std::string& lowerLayerName) {
+        if (lowerLayerName.rfind("floor_deco", 0) == 0 ||
+            lowerLayerName.find("floor") != std::string::npos ||
+            lowerLayerName.find("carpet") != std::string::npos ||
+            lowerLayerName.find("rug") != std::string::npos) {
+            return VisualCategory::FloorDeco;
+        }
+        if (lowerLayerName.rfind("small_deco", 0) == 0) {
+            return VisualCategory::SmallDeco;
+        }
+        if (lowerLayerName.rfind("wall_deco", 0) == 0) {
+            return VisualCategory::WallDeco;
+        }
+        // "furniture" або будь-який інший візуальний шар
+        return VisualCategory::Furniture;
+    }
+
     void ParseTilesetTiles(const JsonValue& tsObj, const std::string& tsDir, TilesetInfo& ts) {
         const JsonValue* tilesNode = tsObj.Get("tiles");
         const JsonValue::Array* tilesArr = tilesNode ? tilesNode->AsArray() : nullptr;
@@ -565,7 +582,7 @@ namespace {
         }
     }
 
-    void ParseVisualObjects(const JsonValue::Array& objs, int layerOrder, MapData& outData) {
+    void ParseVisualObjects(const JsonValue::Array& objs, VisualCategory category, int layerOrder, int& globalSubOrder, MapData& outData) {
         for (const auto& obj : objs) {
             if (!obj.AsObject()) continue;
             if (!obj.GetBool("visible", true)) continue;
@@ -579,8 +596,12 @@ namespace {
             vObj.y = obj.GetFloat("y");
             vObj.width = obj.GetFloat("width");
             vObj.height = obj.GetFloat("height");
+            vObj.category = category;
             vObj.layerOrder = layerOrder;
+            vObj.subOrder = ++globalSubOrder;
             vObj.sortY = vObj.y;
+            vObj.hasShadow = (category == VisualCategory::Furniture);
+
             outData.visualObjects.push_back(vObj);
         }
     }
@@ -624,6 +645,7 @@ namespace {
     void ParseLayersRecursive(
         const JsonValue::Array& layersArr,
         int& visualLayerIndex,
+        int& globalSubOrder,
         MapData& outData)
     {
         for (const auto& layer : layersArr) {
@@ -638,7 +660,7 @@ namespace {
                 const JsonValue* subLayersNode = layer.Get("layers");
                 const JsonValue::Array* subLayersArr = subLayersNode ? subLayersNode->AsArray() : nullptr;
                 if (subLayersArr) {
-                    ParseLayersRecursive(*subLayersArr, visualLayerIndex, outData);
+                    ParseLayersRecursive(*subLayersArr, visualLayerIndex, globalSubOrder, outData);
                 }
                 continue;
             }
@@ -697,68 +719,88 @@ namespace {
                 const JsonValue::Array* objsArr = objsNode ? objsNode->AsArray() : nullptr;
                 if (!objsArr) continue;
 
-                if (lowerName.find("colli") != std::string::npos ||
-                    lowerName.find("wall") != std::string::npos ||
-                    lowerName.find("стін") != std::string::npos)
+                if (lowerName.find("colli") != std::string::npos)
                 {
                     ParseRectObjects(*objsArr, outData.collisionRects, nullptr, nullptr, nullptr);
                 }
-                else if (lowerName.find("trig") != std::string::npos ||
-                    lowerName.find("door") != std::string::npos ||
-                    lowerName.find("interact") != std::string::npos ||
-                    lowerName.find("двер") != std::string::npos)
+                else if (lowerName.find("trig") != std::string::npos)
                 {
                     ParseRectObjects(*objsArr, outData.triggers, &outData.triggerNames, &outData.teleportTargets, &outData.interactables);
                 }
-                else if (lowerName.find("spawn") != std::string::npos ||
-                    lowerName.find("entit") != std::string::npos ||
-                    lowerName.find("patrol") != std::string::npos)
+                else if (lowerName.find("spawn") != std::string::npos)
                 {
                     ParseSpawnObjects(*objsArr, outData);
                 }
                 else if (isVisible) {
-                    int order = (lowerName.find("floor") != std::string::npos ||
-                        lowerName.find("carpet") != std::string::npos ||
-                        lowerName.find("rug") != std::string::npos)
-                        ? -1 : visualLayerIndex++;
-
-                    ParseVisualObjects(*objsArr, order, outData);
+                    VisualCategory category = DetectVisualCategory(lowerName);
+                    int order = (category == VisualCategory::FloorDeco) ? -1 : visualLayerIndex++;
+                    ParseVisualObjects(*objsArr, category, order, globalSubOrder, outData);
                 }
             }
         }
     }
 
     void ApplySupportSorting(MapData& outData) {
-        for (auto& topObj : outData.visualObjects) {
-            const MapVisualObject* bestSupport = nullptr;
+        for (auto& obj : outData.visualObjects) {
+            switch (obj.category) {
+            case VisualCategory::FloorDeco:
+                obj.hasShadow = false;
+                break;
 
-            if (topObj.layerOrder > 0) {
-                float footX = topObj.x + topObj.width * 0.5f;
-                float footY = topObj.y;
+            case VisualCategory::WallDeco:
+                obj.sortY = obj.y;
+                obj.hasShadow = false;
+                break;
+
+            case VisualCategory::Furniture:
+                obj.sortY = obj.y;
+                obj.hasShadow = true;
+                AddTileCollisionsToWorld(
+                    obj.rawGid,
+                    obj.x,
+                    obj.y - obj.height,
+                    obj.width,
+                    obj.height,
+                    outData
+                );
+                break;
+
+            case VisualCategory::SmallDeco: {
+                const MapVisualObject* bestSupport = nullptr;
+                float footX = obj.x + obj.width * 0.5f;
+                float footY = obj.y;
 
                 for (const auto& baseObj : outData.visualObjects) {
-                    if (baseObj.layerOrder < 0 || baseObj.layerOrder >= topObj.layerOrder) continue;
+                    if (baseObj.category != VisualCategory::Furniture) continue;
+
                     if (footX >= baseObj.x && footX <= baseObj.x + baseObj.width &&
                         footY >= baseObj.y - baseObj.height && footY <= baseObj.y) {
-                        if (!bestSupport || baseObj.sortY > bestSupport->sortY) {
+                        if (!bestSupport ||
+                            baseObj.sortY > bestSupport->sortY ||
+                            (std::abs(baseObj.sortY - bestSupport->sortY) < 0.001f && baseObj.layerOrder > bestSupport->layerOrder)) {
                             bestSupport = &baseObj;
                         }
                     }
                 }
-            }
 
-            if (bestSupport) {
-                topObj.sortY = bestSupport->sortY;
+                if (bestSupport) {
+                    obj.sortY = bestSupport->sortY + 0.01f * static_cast<float>(obj.subOrder);
+                    obj.hasShadow = false;
+                }
+                else {
+                    obj.sortY = obj.y;
+                    obj.hasShadow = true;
+                    AddTileCollisionsToWorld(
+                        obj.rawGid,
+                        obj.x,
+                        obj.y - obj.height,
+                        obj.width,
+                        obj.height,
+                        outData
+                    );
+                }
+                break;
             }
-            else {
-                AddTileCollisionsToWorld(
-                    topObj.rawGid,
-                    topObj.x,
-                    topObj.y - topObj.height,
-                    topObj.width,
-                    topObj.height,
-                    outData
-                );
             }
         }
     }
@@ -798,8 +840,9 @@ bool MapParser::Parse(const std::string& mapPath, const std::string& defaultTile
     }
 
     int visualLayerIndex = 0;
+    int globalSubOrder = 0;
     if (layersArr) {
-        ParseLayersRecursive(*layersArr, visualLayerIndex, outData);
+        ParseLayersRecursive(*layersArr, visualLayerIndex, globalSubOrder, outData);
     }
 
     ApplySupportSorting(outData);
