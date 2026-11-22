@@ -444,7 +444,7 @@ void Guard::UpdateChaseAudio(float distToPlayer, float dt) {
         normalizedDist = Clamp(normalizedDist, 0.0f, 1.0f);
 
         float proximity = 1.0f - normalizedDist;
-        targetVolume = Lerp(0.07f, 0.40f, proximity);
+        targetVolume = Lerp(0.07f, 0.30f, proximity);
 
         if (currentState == GuardState::INVESTIGATE) {
             targetVolume *= 0.75f;
