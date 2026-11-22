@@ -66,7 +66,7 @@ void SoundSynth::Init() {
                 }
                 data[i] = (short)Clamp(mix * 15000.0f, -32767.0f, 32767.0f);
             }
-            diceRoll = BuildSoundFromSamples(data, frames, 0.38f);
+            diceRoll = BuildSoundFromSamples(data, frames, 0.19f);
         }
     }
 
@@ -92,7 +92,7 @@ void SoundSynth::Init() {
                 }
                 data[i] = (short)Clamp(mix * 16500.0f, -32767.0f, 32767.0f);
             }
-            lockedDoor = BuildSoundFromSamples(data, frames, 0.42f);
+            lockedDoor = BuildSoundFromSamples(data, frames, 0.21f);
         }
     }
 
@@ -109,7 +109,7 @@ void SoundSynth::Init() {
                     + sinf(2.0f * PI * (freq * 1.48f) * t) * 0.30f;
                 data[i] = (short)Clamp(sig * env * 13000.0f, -32767.0f, 32767.0f);
             }
-            lockFail = BuildSoundFromSamples(data, frames, 0.32f);
+            lockFail = BuildSoundFromSamples(data, frames, 0.16f);
         }
     }
 
@@ -134,7 +134,7 @@ void SoundSynth::Init() {
                 float mix = click * 0.75f + chime * 0.85f;
                 data[i] = (short)Clamp(mix * 15000.0f, -32767.0f, 32767.0f);
             }
-            lockOpen = BuildSoundFromSamples(data, frames, 0.38f);
+            lockOpen = BuildSoundFromSamples(data, frames, 0.19f);
         }
     }
 
@@ -157,7 +157,7 @@ void SoundSynth::Init() {
                 }
                 data[i] = (short)Clamp(mix * 14000.0f, -32767.0f, 32767.0f);
             }
-            keyPickup = BuildSoundFromSamples(data, frames, 0.34f);
+            keyPickup = BuildSoundFromSamples(data, frames, 0.17f);
         }
     }
 
@@ -180,7 +180,7 @@ void SoundSynth::Init() {
                 }
                 data[i] = (short)Clamp(sig * 12500.0f, -32767.0f, 32767.0f);
             }
-            cardPickup = BuildSoundFromSamples(data, frames, 0.32f);
+            cardPickup = BuildSoundFromSamples(data, frames, 0.16f);
         }
     }
 
@@ -197,7 +197,7 @@ void SoundSynth::Init() {
                 float mix = relay + staticNoise;
                 data[i] = (short)Clamp(mix * 13500.0f, -32767.0f, 32767.0f);
             }
-            camSwitch = BuildSoundFromSamples(data, frames, 0.28f);
+            camSwitch = BuildSoundFromSamples(data, frames, 0.14f);
         }
     }
 
@@ -217,7 +217,7 @@ void SoundSynth::Init() {
                 float mix = (sub + tension * expf(-t * 8.0f)) * env;
                 data[i] = (short)Clamp(mix * 18500.0f, -32767.0f, 32767.0f);
             }
-            guardAlert = BuildSoundFromSamples(data, frames, 0.45f);
+            guardAlert = BuildSoundFromSamples(data, frames, 0.225f);
         }
     }
 }

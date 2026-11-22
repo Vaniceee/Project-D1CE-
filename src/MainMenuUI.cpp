@@ -1,6 +1,27 @@
 #include "MainMenuUI.h"
 #include <cmath>
 
+namespace {
+    void DrawModalKeyCap(float x, float y, float w, float h, const char* label, float alpha) {
+        Rectangle baseRect = { x, y + 3.0f, w, h };
+        Rectangle topRect = { x, y, w, h };
+
+        DrawRectangleRounded(baseRect, 0.22f, 6, ColorAlpha(Color{ 95, 72, 26, 255 }, alpha));
+        DrawRectangleRounded(topRect, 0.22f, 6, ColorAlpha(Color{ 18, 20, 26, 255 }, alpha));
+        DrawRectangleRoundedLinesEx(topRect, 0.22f, 6, 1.4f, ColorAlpha(GOLD, 0.90f * alpha));
+
+        int fontSize = 14;
+        int tw = MeasureText(label, fontSize);
+        DrawText(
+            label,
+            (int)(x + (w - (float)tw) * 0.5f),
+            (int)(y + (h - (float)fontSize) * 0.5f),
+            fontSize,
+            ColorAlpha(Color{ 255, 234, 155, 255 }, alpha)
+        );
+    }
+}
+
 void MainMenuUI::DrawNeonTitle(float screenW, float screenH, float shaderTime, Vector2 smoothedMouseOffset) const {
     std::string titleStr = "_PR0JECT_D1CE";
     float cycle = fmodf(shaderTime, 4.2f);
@@ -18,7 +39,7 @@ void MainMenuUI::DrawNeonTitle(float screenW, float screenH, float shaderTime, V
     int fontSize = 62;
     int textWidth = MeasureText(titleStr.c_str(), fontSize);
     int titleX = (int)((screenW - textWidth) * 0.5f - smoothedMouseOffset.x * 5.0f);
-    int titleY = (int)(screenH * 0.23f - smoothedMouseOffset.y * 3.5f);
+    int titleY = (int)(screenH * 0.21f - smoothedMouseOffset.y * 3.5f);
 
     float breathe = 0.88f + 0.12f * sinf(shaderTime * 3.2f);
     float glowAlpha = breathe * tubeBrightness;
@@ -117,7 +138,7 @@ void MainMenuUI::DrawButton(const MenuButton& btn, float shaderTime) const {
     DrawPoly({ innerRect.x, innerRect.y + innerRect.height }, 4, cornerR, 0.0f, cornerCol);
     DrawPoly({ innerRect.x + innerRect.width, innerRect.y + innerRect.height }, 4, cornerR, 0.0f, cornerCol);
 
-    int fontSize = 25;
+    int fontSize = 24;
     int textWidth = MeasureText(btn.text.c_str(), fontSize);
     float textX = rect.x + (rect.width - textWidth) * 0.5f;
     float textY = rect.y + (rect.height - fontSize) * 0.5f;
@@ -135,6 +156,135 @@ void MainMenuUI::DrawButton(const MenuButton& btn, float shaderTime) const {
         DrawPoly({ textX - diamondOffset, midY }, 4, diamondRadius, 0.0f, sideDiamondCol);
         DrawPoly({ textX + textWidth + diamondOffset, midY }, 4, diamondRadius, 0.0f, sideDiamondCol);
     }
+}
+
+void MainMenuUI::DrawRulesModal(float screenW, float screenH, float openAnim, float shaderTime, const MenuButton& closeBtn) const {
+    if (openAnim <= 0.01f) return;
+
+    float ease = 1.0f - powf(1.0f - openAnim, 3.0f);
+
+    // Затемнення фону поза панеллю
+    DrawRectangle(0, 0, (int)screenW, (int)screenH, Fade(BLACK, 0.80f * ease));
+
+    float modalW = 920.0f;
+    float modalH = 540.0f;
+    float modalX = (screenW - modalW) * 0.5f;
+    float modalY = (screenH - modalH) * 0.5f + (1.0f - ease) * 18.0f;
+
+    Rectangle panel = { modalX, modalY, modalW, modalH };
+    Rectangle inner = { modalX + 8.0f, modalY + 8.0f, modalW - 16.0f, modalH - 16.0f };
+
+    // Тінь + обсидіановий корпус панелі
+    DrawRectangle((int)panel.x + 8, (int)panel.y + 10, (int)panel.width, (int)panel.height, Fade(BLACK, 0.85f * ease));
+    DrawRectangleRec(panel, ColorAlpha(Color{ 11, 12, 16, 255 }, 0.96f * ease));
+    DrawRectangleLinesEx(panel, 2.0f, ColorAlpha(GOLD, 0.88f * ease));
+    DrawRectangleLinesEx(inner, 1.0f, ColorAlpha(GOLD, 0.28f * ease));
+
+    // Кутові ромби Art Deco
+    DrawPoly({ inner.x, inner.y }, 4, 5.0f, 0.0f, ColorAlpha(GOLD, ease));
+    DrawPoly({ inner.x + inner.width, inner.y }, 4, 5.0f, 0.0f, ColorAlpha(GOLD, ease));
+    DrawPoly({ inner.x, inner.y + inner.height }, 4, 5.0f, 0.0f, ColorAlpha(GOLD, ease));
+    DrawPoly({ inner.x + inner.width, inner.y + inner.height }, 4, 5.0f, 0.0f, ColorAlpha(GOLD, ease));
+
+    // Заголовок модального вікна
+    const char* header = "HOUSE RULES & CONTROLS";
+    int headerSize = 30;
+    int headerW = MeasureText(header, headerSize);
+    float centerX = modalX + modalW * 0.5f;
+    int headerY = (int)(modalY + 26.0f);
+
+    DrawText(header, (int)(centerX - headerW * 0.5f) + 2, headerY + 2, headerSize, Fade(BLACK, 0.85f * ease));
+    DrawText(header, (int)(centerX - headerW * 0.5f), headerY, headerSize, ColorAlpha(Color{ 255, 226, 110, 255 }, ease));
+
+    float divY = (float)(headerY + headerSize + 12);
+    DrawLineEx({ modalX + 60.0f, divY }, { centerX - 16.0f, divY }, 1.5f, ColorAlpha(GOLD, 0.55f * ease));
+    DrawLineEx({ centerX + 16.0f, divY }, { modalX + modalW - 60.0f, divY }, 1.5f, ColorAlpha(GOLD, 0.55f * ease));
+    DrawPoly({ centerX, divY }, 4, 5.5f, 0.0f, ColorAlpha(GOLD, ease));
+
+    // Вертикальний роздільник між колонками
+    float colTop = divY + 22.0f;
+    float colBot = modalY + modalH - 96.0f;
+    float colMid = (colTop + colBot) * 0.5f;
+    DrawLineEx({ centerX, colTop }, { centerX, colMid - 10.0f }, 1.2f, ColorAlpha(GOLD, 0.35f * ease));
+    DrawLineEx({ centerX, colMid + 10.0f }, { centerX, colBot }, 1.2f, ColorAlpha(GOLD, 0.35f * ease));
+    DrawPoly({ centerX, colMid }, 4, 4.5f, 0.0f, ColorAlpha(GOLD, 0.85f * ease));
+
+    // =========================================================================
+    // ЛІВА КОЛОНКА: CONTROLS
+    // =========================================================================
+    float leftColX = modalX + 42.0f;
+    DrawText("CONTROLS", (int)leftColX, (int)colTop, 20, ColorAlpha(GOLD, 0.92f * ease));
+
+    struct ControlRow {
+        const char* key;
+        float keyW;
+        const char* title;
+        const char* desc;
+    };
+
+    const ControlRow controls[] = {
+        { "WASD",  68.0f, "MOVE",      "Navigate the casino floor quietly" },
+        { "SHIFT", 68.0f, "SPRINT",    "Run fast; drains stamina & makes noise" },
+        { "E",     68.0f, "INTERACT",  "Pick locks, open safes & exit gate" },
+        { "ESC",   68.0f, "PAUSE",     "Freeze feed, restart or return to menu" }
+    };
+
+    float rowY = colTop + 42.0f;
+    for (int i = 0; i < 4; ++i) {
+        DrawModalKeyCap(leftColX, rowY, controls[i].keyW, 30.0f, controls[i].key, ease);
+
+        float textStartX = leftColX + controls[i].keyW + 16.0f;
+        DrawText(controls[i].title, (int)textStartX, (int)(rowY - 2.0f), 16, ColorAlpha(RAYWHITE, 0.95f * ease));
+        DrawText(controls[i].desc, (int)textStartX, (int)(rowY + 17.0f), 13, ColorAlpha(LIGHTGRAY, 0.72f * ease));
+
+        rowY += 68.0f;
+    }
+
+    // =========================================================================
+    // ПРАВА КОЛОНКА: CASINO RULES
+    // =========================================================================
+    float rightColX = centerX + 34.0f;
+    DrawText("CASINO RULES", (int)rightColX, (int)colTop, 20, ColorAlpha(GOLD, 0.92f * ease));
+
+    struct RuleItem {
+        Color bulletCol;
+        const char* title;
+        const char* line1;
+        const char* line2;
+    };
+
+    const RuleItem rules[] = {
+        {
+            GOLD,
+            "RIGGED DICE LOCKPICKING (2D6)",
+            "Lockers require roll >= 7. Guard Safe requires >= 9.",
+            "Failed rolls make noise — try again if clear."
+        },
+        {
+            Color{ 110, 225, 175, 255 },
+            "KEY PROGRESSION CHAIN",
+            "1. Outer Lockers -> Guard Room Key",
+            "2. Guard Room -> Safe Card -> Safe -> Master Key"
+        },
+        {
+            Color{ 235, 65, 72, 255 },
+            "GUARD PATROL & SENSES",
+            "Avoid flashlight cone & sprinting near the guard.",
+            "3 Aces of Fate (lives). Lose all 3 — house wins."
+        }
+    };
+
+    float ruleY = colTop + 40.0f;
+    for (int i = 0; i < 3; ++i) {
+        DrawPoly({ rightColX + 6.0f, ruleY + 8.0f }, 4, 4.5f, 0.0f, ColorAlpha(rules[i].bulletCol, ease));
+        DrawText(rules[i].title, (int)(rightColX + 20.0f), (int)ruleY, 15, ColorAlpha(rules[i].bulletCol, 0.95f * ease));
+        DrawText(rules[i].line1, (int)(rightColX + 20.0f), (int)(ruleY + 21.0f), 13, ColorAlpha(RAYWHITE, 0.82f * ease));
+        DrawText(rules[i].line2, (int)(rightColX + 20.0f), (int)(ruleY + 39.0f), 13, ColorAlpha(LIGHTGRAY, 0.68f * ease));
+        ruleY += 86.0f;
+    }
+
+    // Кнопка закриття
+    DrawButton(closeBtn, shaderTime);
 }
 
 void MainMenuUI::DrawCctvOverlay(float screenW, float screenH, float shaderTime, float transitionProgress, bool isTransitioning) const {
@@ -164,8 +314,8 @@ void MainMenuUI::DrawCctvOverlay(float screenW, float screenH, float shaderTime,
         DrawText("REC", (int)(margin + 30.0f), (int)(margin + 11.0f), 15, ColorAlpha(RAYWHITE, 0.65f * recAlpha));
         DrawText("CAM-04 // CASINO FLOOR", (int)(margin + 12.0f), (int)(margin + 32.0f), 13, ColorAlpha(LIGHTGRAY, 0.42f * recAlpha));
 
-        const char* statusText = isTransitioning ? "SIGNAL: OVERRIDE..." : "SIGNAL: UNSTABLE";
-        Color statusColor = isTransitioning ? ColorAlpha(RED, 0.75f * recAlpha) : ColorAlpha(LIGHTGRAY, 0.38f * recAlpha);
+        const char* statusText = isTransitioning ? "SIGNAL: OVERRIDE..." : "[H] HOUSE RULES   //   SIGNAL: UNSTABLE";
+        Color statusColor = isTransitioning ? ColorAlpha(RED, 0.75f * recAlpha) : ColorAlpha(LIGHTGRAY, 0.45f * recAlpha);
         int statusW = MeasureText(statusText, 13);
         DrawText(statusText, (int)(screenW - margin - statusW - 12.0f), (int)(screenH - margin - 24.0f), 13, statusColor);
     }
@@ -180,7 +330,6 @@ void MainMenuUI::DrawTransitionDoors(float screenW, float screenH, float progres
     float halfW = screenW * 0.5f;
     float panelW = halfW * easeClose;
 
-    // Легкі перешкоди сигналу на фоні перед змиканням
     if (progress < 0.75f) {
         for (int i = 0; i < 5; ++i) {
             int barY = GetRandomValue(0, (int)screenH);
@@ -193,7 +342,6 @@ void MainMenuUI::DrawTransitionDoors(float screenW, float screenH, float progres
     Color goldTrim = ColorAlpha(GOLD, 0.85f);
     Color innerTrim = ColorAlpha(GOLD, 0.25f);
 
-    // Ліва стулка
     Rectangle leftDoor = { 0.0f, 0.0f, panelW, screenH };
     DrawRectangleRec(leftDoor, panelBg);
     if (panelW > 14.0f) {
@@ -204,7 +352,6 @@ void MainMenuUI::DrawTransitionDoors(float screenW, float screenH, float progres
         DrawPoly({ panelW - 12.0f, screenH - 24.0f }, 4, 4.5f, 0.0f, goldTrim);
     }
 
-    // Права стулка
     Rectangle rightDoor = { screenW - panelW, 0.0f, panelW, screenH };
     DrawRectangleRec(rightDoor, panelBg);
     if (panelW > 14.0f) {
@@ -215,12 +362,10 @@ void MainMenuUI::DrawTransitionDoors(float screenW, float screenH, float progres
         DrawPoly({ screenW - panelW + 12.0f, screenH - 24.0f }, 4, 4.5f, 0.0f, goldTrim);
     }
 
-    // Сканлайни поверх закритих стулок
     for (int y = 0; y < (int)screenH; y += 4) {
         DrawRectangle(0, y, (int)screenW, 1, Fade(WHITE, 0.025f * easeClose));
     }
 
-    // Центральний замок-ромб та термінал перемикання камери після змикання
     if (closeT > 0.65f) {
         float lockAlpha = Clamp((closeT - 0.65f) / 0.35f, 0.0f, 1.0f);
         float fadeOutEnd = (progress > 0.82f) ? Clamp(1.0f - (progress - 0.82f) / 0.18f, 0.0f, 1.0f) : 1.0f;

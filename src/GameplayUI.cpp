@@ -89,14 +89,20 @@ void GameplayUI::Init() {
     float screenW = (float)GetScreenWidth();
     float screenH = (float)GetScreenHeight();
     float btnWidth = 310.0f;
-    float btnHeight = 58.0f;
+    float btnHeight = 56.0f;
     float btnX = (screenW - btnWidth) * 0.5f;
+    float startY = (screenH * 0.5f) - 62.0f;
+    float gapY = 74.0f;
 
-    resumeButton.bounds = { btnX, (screenH * 0.5f) - 36.0f, btnWidth, btnHeight };
+    resumeButton.bounds = { btnX, startY, btnWidth, btnHeight };
     resumeButton.text = "RESUME";
     resumeButton.isDanger = false;
 
-    exitToMenuButton.bounds = { btnX, (screenH * 0.5f) + 44.0f, btnWidth, btnHeight };
+    restartButton.bounds = { btnX, startY + gapY, btnWidth, btnHeight };
+    restartButton.text = "RESTART";
+    restartButton.isDanger = false;
+
+    exitToMenuButton.bounds = { btnX, startY + gapY * 2.0f, btnWidth, btnHeight };
     exitToMenuButton.text = "MAIN MENU";
     exitToMenuButton.isDanger = true;
 
@@ -117,6 +123,10 @@ void GameplayUI::ResetPauseMenu() {
     resumeButton.wasHovered = false;
     resumeButton.hoverProgress = 0.0f;
 
+    restartButton.isHovered = false;
+    restartButton.wasHovered = false;
+    restartButton.hoverProgress = 0.0f;
+
     exitToMenuButton.isHovered = false;
     exitToMenuButton.wasHovered = false;
     exitToMenuButton.hoverProgress = 0.0f;
@@ -127,13 +137,16 @@ PauseMenuAction GameplayUI::UpdatePauseMenu(float dt) {
     Vector2 mousePos = GetMousePosition();
 
     resumeButton.wasHovered = resumeButton.isHovered;
+    restartButton.wasHovered = restartButton.isHovered;
     exitToMenuButton.wasHovered = exitToMenuButton.isHovered;
 
     resumeButton.isHovered = CheckCollisionPointRec(mousePos, resumeButton.bounds);
+    restartButton.isHovered = CheckCollisionPointRec(mousePos, restartButton.bounds);
     exitToMenuButton.isHovered = CheckCollisionPointRec(mousePos, exitToMenuButton.bounds);
 
     if (hasHoverSound) {
-        if (resumeButton.isHovered && !resumeButton.wasHovered) {
+        if ((resumeButton.isHovered && !resumeButton.wasHovered) ||
+            (restartButton.isHovered && !restartButton.wasHovered)) {
             SetSoundPitch(hoverSound, 1.08f);
             PlaySound(hoverSound);
         }
@@ -145,13 +158,21 @@ PauseMenuAction GameplayUI::UpdatePauseMenu(float dt) {
 
     float animSpeed = 1.0f - expf(-12.0f * dt);
     resumeButton.hoverProgress = Lerp(resumeButton.hoverProgress, resumeButton.isHovered ? 1.0f : 0.0f, animSpeed);
+    restartButton.hoverProgress = Lerp(restartButton.hoverProgress, restartButton.isHovered ? 1.0f : 0.0f, animSpeed);
     exitToMenuButton.hoverProgress = Lerp(exitToMenuButton.hoverProgress, exitToMenuButton.isHovered ? 1.0f : 0.0f, animSpeed);
 
-    CustomCursor::Update(dt, resumeButton.isHovered || exitToMenuButton.isHovered);
+    CustomCursor::Update(dt, resumeButton.isHovered || restartButton.isHovered || exitToMenuButton.isHovered);
+
+    if (IsKeyPressed(KEY_R)) {
+        return PauseMenuAction::RESTART;
+    }
 
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         if (resumeButton.isHovered) {
             return PauseMenuAction::RESUME;
+        }
+        if (restartButton.isHovered) {
+            return PauseMenuAction::RESTART;
         }
         if (exitToMenuButton.isHovered) {
             return PauseMenuAction::MAIN_MENU;
@@ -194,7 +215,7 @@ void GameplayUI::DrawPauseMenu() const {
     int fontSize = 58;
     int textWidth = MeasureText(pauseTitle, fontSize);
     int titleX = (int)((screenW - textWidth) * 0.5f);
-    int titleY = (int)(screenH * 0.25f);
+    int titleY = (int)(screenH * 0.23f);
     float glow = 0.85f + 0.15f * sinf(pauseAnimTime * 3.0f);
 
     DrawText(pauseTitle, titleX - 2, titleY + 2, fontSize, ColorAlpha(RED, 0.3f * glow));
@@ -210,7 +231,13 @@ void GameplayUI::DrawPauseMenu() const {
 
     // 4. Кнопки у стилі Art Deco
     DrawArtDecoButton(resumeButton, pauseAnimTime);
+    DrawArtDecoButton(restartButton, pauseAnimTime);
     DrawArtDecoButton(exitToMenuButton, pauseAnimTime);
+
+    const char* hint = "[ESC] RESUME   //   [R] QUICK RESTART";
+    int hintW = MeasureText(hint, 13);
+    DrawText(hint, (int)(centerX - hintW * 0.5f), (int)(screenH - margin - 24.0f), 13, ColorAlpha(LIGHTGRAY, 0.52f));
+
     CustomCursor::Draw(exitToMenuButton.isHovered);
 }
 

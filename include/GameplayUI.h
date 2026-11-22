@@ -31,6 +31,7 @@ struct UiButton {
 enum class PauseMenuAction {
     NONE,
     RESUME,
+    RESTART,
     MAIN_MENU
 };
 
@@ -62,6 +63,7 @@ private:
     bool hasHoverSound = false;
 
     UiButton resumeButton;
+    UiButton restartButton;
     UiButton exitToMenuButton;
 
     void DrawInventorySlots(const GameplayHudData& data, float screenW, float screenH) const;

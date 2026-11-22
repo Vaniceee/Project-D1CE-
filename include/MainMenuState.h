@@ -42,7 +42,13 @@ private:
     Sound hoverSound = { 0 };
     bool hasHoverSound = false;
 
+    // Модальне вікно правил та керування
+    bool isRulesOpen = false;
+    float rulesOpenAnim = 0.0f;
+
     // Кнопки
     MenuButton playButton;
+    MenuButton rulesButton;
     MenuButton exitButton;
+    MenuButton closeRulesButton;
 };

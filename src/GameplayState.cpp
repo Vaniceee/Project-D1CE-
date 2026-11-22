@@ -355,6 +355,10 @@ void GameplayState::Update() {
             ResumeMusicStream(bgMusic);
             if (guard) guard->SetAudioPaused(false);
         }
+        else if (action == PauseMenuAction::RESTART) {
+            GameManager::Instance().ChangeState(new GameplayState());
+            return;
+        }
         else if (action == PauseMenuAction::MAIN_MENU) {
             GameManager::Instance().ChangeState(new MainMenuState());
             return;

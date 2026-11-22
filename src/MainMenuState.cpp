@@ -74,30 +74,52 @@ void MainMenuState::Init() {
         }
     }
 
-    // 5. Скидання стану переходу та кнопок
+    // 5. Скидання стану переходу, правил та кнопок
     isTransitioning = false;
     transitionTimer = 0.0f;
+    isRulesOpen = false;
+    rulesOpenAnim = 0.0f;
 
     float screenW = (float)GetScreenWidth();
     float screenH = (float)GetScreenHeight();
 
-    float btnWidth = 300.0f;
-    float btnHeight = 58.0f;
+    float btnWidth = 310.0f;
+    float btnHeight = 56.0f;
     float btnX = (screenW - btnWidth) * 0.5f;
+    float startY = (screenH * 0.5f) - 62.0f;
+    float gapY = 74.0f;
 
-    playButton.bounds = { btnX, (screenH * 0.5f) - 38.0f, btnWidth, btnHeight };
+    playButton.bounds = { btnX, startY, btnWidth, btnHeight };
     playButton.text = "PLAY";
     playButton.isHovered = false;
     playButton.wasHovered = false;
     playButton.hoverProgress = 0.0f;
     playButton.isDanger = false;
 
-    exitButton.bounds = { btnX, (screenH * 0.5f) + 42.0f, btnWidth, btnHeight };
+    rulesButton.bounds = { btnX, startY + gapY, btnWidth, btnHeight };
+    rulesButton.text = "HOUSE RULES";
+    rulesButton.isHovered = false;
+    rulesButton.wasHovered = false;
+    rulesButton.hoverProgress = 0.0f;
+    rulesButton.isDanger = false;
+
+    exitButton.bounds = { btnX, startY + gapY * 2.0f, btnWidth, btnHeight };
     exitButton.text = "EXIT";
     exitButton.isHovered = false;
     exitButton.wasHovered = false;
     exitButton.hoverProgress = 0.0f;
     exitButton.isDanger = true;
+
+    float closeW = 240.0f;
+    float closeH = 48.0f;
+    float modalH = 540.0f;
+    float modalY = (screenH - modalH) * 0.5f;
+    closeRulesButton.bounds = { (screenW - closeW) * 0.5f, modalY + modalH - 72.0f, closeW, closeH };
+    closeRulesButton.text = "CLOSE";
+    closeRulesButton.isHovered = false;
+    closeRulesButton.wasHovered = false;
+    closeRulesButton.hoverProgress = 0.0f;
+    closeRulesButton.isDanger = false;
 }
 
 void MainMenuState::Cleanup() {
@@ -128,7 +150,7 @@ void MainMenuState::Update() {
     Vector2 mousePos = GetMousePosition();
 
     Vector2 targetMouseOffset = { 0.0f, 0.0f };
-    if (!isTransitioning && screenW > 1.0f && screenH > 1.0f) {
+    if (!isTransitioning && !isRulesOpen && screenW > 1.0f && screenH > 1.0f) {
         targetMouseOffset.x = Clamp((mousePos.x / screenW) * 2.0f - 1.0f, -1.0f, 1.0f);
         targetMouseOffset.y = Clamp((mousePos.y / screenH) * 2.0f - 1.0f, -1.0f, 1.0f);
     }
@@ -136,7 +158,11 @@ void MainMenuState::Update() {
     smoothedMouseOffset.x = Lerp(smoothedMouseOffset.x, targetMouseOffset.x, mouseBlend);
     smoothedMouseOffset.y = Lerp(smoothedMouseOffset.y, targetMouseOffset.y, mouseBlend);
 
+    float rulesBlend = 1.0f - expf(-14.0f * deltaTime);
+    rulesOpenAnim = Lerp(rulesOpenAnim, isRulesOpen ? 1.0f : 0.0f, rulesBlend);
+
     float progress = 0.0f;
+    float hoverAnimSpeed = 1.0f - expf(-12.0f * deltaTime);
 
     if (isTransitioning) {
         transitionTimer += deltaTime;
@@ -154,7 +180,6 @@ void MainMenuState::Update() {
         if (hasStartSound) {
             float startSoundBaseVolume = 0.5f;
             float currentStartVolume = startSoundBaseVolume * (1.2f - progress);
-
             SetSoundVolume(startSound, currentStartVolume);
         }
 
@@ -163,15 +188,46 @@ void MainMenuState::Update() {
             return;
         }
     }
+    else if (isRulesOpen) {
+        playButton.isHovered = false;
+        rulesButton.isHovered = false;
+        exitButton.isHovered = false;
+
+        closeRulesButton.wasHovered = closeRulesButton.isHovered;
+        closeRulesButton.isHovered = CheckCollisionPointRec(mousePos, closeRulesButton.bounds);
+
+        if (hasHoverSound && closeRulesButton.isHovered && !closeRulesButton.wasHovered) {
+            SetSoundPitch(hoverSound, 1.08f);
+            PlaySound(hoverSound);
+        }
+
+        Rectangle modalBounds = { (screenW - 920.0f) * 0.5f, (screenH - 540.0f) * 0.5f, 920.0f, 540.0f };
+        bool clickedOutside = IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !CheckCollisionPointRec(mousePos, modalBounds);
+
+        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_H) || clickedOutside ||
+            (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && closeRulesButton.isHovered)) {
+            isRulesOpen = false;
+            closeRulesButton.isHovered = false;
+            if (hasHoverSound) {
+                SetSoundPitch(hoverSound, 0.92f);
+                PlaySound(hoverSound);
+            }
+        }
+    }
     else {
+        closeRulesButton.isHovered = false;
+
         playButton.wasHovered = playButton.isHovered;
+        rulesButton.wasHovered = rulesButton.isHovered;
         exitButton.wasHovered = exitButton.isHovered;
 
         playButton.isHovered = CheckCollisionPointRec(mousePos, playButton.bounds);
+        rulesButton.isHovered = CheckCollisionPointRec(mousePos, rulesButton.bounds);
         exitButton.isHovered = CheckCollisionPointRec(mousePos, exitButton.bounds);
 
         if (hasHoverSound) {
-            if (playButton.isHovered && !playButton.wasHovered) {
+            if ((playButton.isHovered && !playButton.wasHovered) ||
+                (rulesButton.isHovered && !rulesButton.wasHovered)) {
                 SetSoundPitch(hoverSound, 1.08f);
                 PlaySound(hoverSound);
             }
@@ -181,13 +237,27 @@ void MainMenuState::Update() {
             }
         }
 
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        if (IsKeyPressed(KEY_H)) {
+            isRulesOpen = true;
+            if (hasHoverSound) {
+                SetSoundPitch(hoverSound, 1.12f);
+                PlaySound(hoverSound);
+            }
+        }
+        else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             if (playButton.isHovered) {
                 isTransitioning = true;
                 transitionTimer = 0.0f;
 
                 if (hasStartSound) {
                     PlaySound(startSound);
+                }
+            }
+            else if (rulesButton.isHovered) {
+                isRulesOpen = true;
+                if (hasHoverSound) {
+                    SetSoundPitch(hoverSound, 1.12f);
+                    PlaySound(hoverSound);
                 }
             }
             else if (exitButton.isHovered) {
@@ -197,11 +267,14 @@ void MainMenuState::Update() {
         }
     }
 
-    float hoverAnimSpeed = 1.0f - expf(-12.0f * deltaTime);
-    playButton.hoverProgress = Lerp(playButton.hoverProgress, (playButton.isHovered && !isTransitioning) ? 1.0f : 0.0f, hoverAnimSpeed);
-    exitButton.hoverProgress = Lerp(exitButton.hoverProgress, (exitButton.isHovered && !isTransitioning) ? 1.0f : 0.0f, hoverAnimSpeed);
+    playButton.hoverProgress = Lerp(playButton.hoverProgress, (playButton.isHovered && !isTransitioning && !isRulesOpen) ? 1.0f : 0.0f, hoverAnimSpeed);
+    rulesButton.hoverProgress = Lerp(rulesButton.hoverProgress, (rulesButton.isHovered && !isTransitioning && !isRulesOpen) ? 1.0f : 0.0f, hoverAnimSpeed);
+    exitButton.hoverProgress = Lerp(exitButton.hoverProgress, (exitButton.isHovered && !isTransitioning && !isRulesOpen) ? 1.0f : 0.0f, hoverAnimSpeed);
+    closeRulesButton.hoverProgress = Lerp(closeRulesButton.hoverProgress, (closeRulesButton.isHovered && isRulesOpen) ? 1.0f : 0.0f, hoverAnimSpeed);
 
-    bool anyHovered = !isTransitioning && (playButton.isHovered || exitButton.isHovered);
+    bool anyHovered = !isTransitioning && (isRulesOpen
+        ? closeRulesButton.isHovered
+        : (playButton.isHovered || rulesButton.isHovered || exitButton.isHovered));
     CustomCursor::Update(deltaTime, anyHovered);
 
     if (menuShader.id != 0) {
@@ -241,15 +314,20 @@ void MainMenuState::Draw() {
 
     menuUI.DrawNeonTitle(screenW, screenH, shaderTime, smoothedMouseOffset);
     menuUI.DrawButton(playButton, shaderTime);
+    menuUI.DrawButton(rulesButton, shaderTime);
     menuUI.DrawButton(exitButton, shaderTime);
 
     float progress = isTransitioning ? Clamp(transitionTimer / transitionDuration, 0.0f, 1.0f) : 0.0f;
     menuUI.DrawCctvOverlay(screenW, screenH, shaderTime, progress, isTransitioning);
 
+    if (rulesOpenAnim > 0.01f) {
+        menuUI.DrawRulesModal(screenW, screenH, rulesOpenAnim, shaderTime, closeRulesButton);
+    }
+
     if (isTransitioning) {
         menuUI.DrawTransitionDoors(screenW, screenH, progress);
     }
     else {
-        CustomCursor::Draw(exitButton.isHovered);
+        CustomCursor::Draw(!isRulesOpen && exitButton.isHovered);
     }
 }
