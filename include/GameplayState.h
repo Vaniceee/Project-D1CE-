@@ -7,6 +7,7 @@
 #include "RenderSystem.h"
 #include "GameCamera.h"
 #include "GameplayUI.h"
+#include "SoundSynth.h"
 #include "AssetManager.h"
 #include "config.h"
 #include "raylib.h"
@@ -28,6 +29,7 @@ private:
     RenderSystem renderSystem;
     GameCamera gameCamera;
     GameplayUI hudUI;
+    SoundSynth soundSynth;
 
     // --- ВЗАЄМОДІЯ З ОБ'ЄКТАМИ ---
     bool showInteractHint = false;
@@ -35,6 +37,7 @@ private:
     std::string statusNotificationText = "";
     Color statusNotificationColor = YELLOW;
     float statusNotificationTimer = 0.0f;
+    float statusNotificationDuration = 2.5f;
 
     void ShowStatusNotification(const std::string& text, Color color, float duration = 2.5f);
 
@@ -136,7 +139,6 @@ private:
     Vector2 pendingTeleportPos = { 0.0f, 0.0f };
     bool waitForKeysRelease = false;
     bool wasInTrigger = false;
-
 
     bool isVictoryTriggered = false;
 };

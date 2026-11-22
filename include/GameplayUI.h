@@ -12,6 +12,11 @@ struct GameplayHudData {
     float shaderTime = 0.0f;
     float cardFlickerTimer = 0.0f;
     int currentCamNumber = 1;
+
+    // Інвентар ключів (3 слоти справа знизу)
+    bool hasRoomKey = false;
+    bool hasSafeKeyCard = false;
+    bool hasMasterKey = false;
 };
 
 struct UiButton {
@@ -36,6 +41,10 @@ public:
 
     // HUD та екранні оверлеї
     void DrawHud(const GameplayHudData& data) const;
+    void DrawInteractPrompt(float animTime) const;
+    void DrawStatusNotification(const std::string& text, Color accentColor, float timer, float maxDuration, float animTime) const;
+    void DrawDiceRollWorld(Vector2 playerHeadWorldPos, int d1, int d2, int sum, float timer, float duration) const;
+
     void DrawTeleportOverlay(float alpha, int camNumber) const;
     void DrawDeathOverlay(float deathTimer, float deathDuration) const;
 
@@ -44,7 +53,7 @@ public:
     PauseMenuAction UpdatePauseMenu(float dt);
     void DrawPauseMenu() const;
 
-    // Спільна кнопка в стилі Art Deco (можна перевикористовувати і в інших стейтах)
+    // Спільна кнопка в стилі Art Deco
     static void DrawArtDecoButton(const UiButton& btn, float animTime);
 
 private:
@@ -54,4 +63,6 @@ private:
 
     UiButton resumeButton;
     UiButton exitToMenuButton;
+
+    void DrawInventorySlots(const GameplayHudData& data, float screenW, float screenH) const;
 };

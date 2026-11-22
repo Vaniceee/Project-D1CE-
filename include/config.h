@@ -13,6 +13,10 @@ namespace Config {
 	constexpr const char* PATH_SHADER_MENU = "assets/shaders/menu.frag";
 	constexpr const char* PATH_SHADER_GAMEOVER = "assets/shaders/gameover.frag";
 
+	//--------ПРЕДМЕТИ / ІКОНКИ ІНВЕНТАРЮ
+	constexpr const char* PATH_PNG_ICON_ROOM_KEY = "assets/items/RoomKey.png";
+	constexpr const char* PATH_PNG_ICON_SAFE_CARD = "assets/items/SafeKeyCard.png";
+	constexpr const char* PATH_PNG_ICON_MASTER_KEY = "assets/items/MasterKey.png";
 
 	// Конфігурація кроків
 	constexpr const char* PATH_STEP_WOOD_1 = "assets/sfx/stp1.wav";

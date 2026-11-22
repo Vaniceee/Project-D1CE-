@@ -3,6 +3,65 @@
 #include "CustomCursor.h"
 #include <cmath>
 
+namespace {
+    void DrawArtDecoDieFace(Rectangle rect, int value, Color borderColor, Color pipColor, float alpha) {
+        DrawRectangle((int)rect.x + 2, (int)rect.y + 3, (int)rect.width, (int)rect.height, Fade(BLACK, 0.72f * alpha));
+        DrawRectangleRounded(rect, 0.22f, 6, ColorAlpha(Color{ 14, 15, 19, 255 }, 0.94f * alpha));
+        DrawRectangleRoundedLinesEx(rect, 0.22f, 6, 1.5f, ColorAlpha(borderColor, 0.92f * alpha));
+
+        Rectangle inner = { rect.x + 2.5f, rect.y + 2.5f, rect.width - 5.0f, rect.height - 5.0f };
+        DrawRectangleRoundedLinesEx(inner, 0.16f, 4, 0.8f, ColorAlpha(borderColor, 0.32f * alpha));
+
+        float cx = rect.x + rect.width * 0.5f;
+        float cy = rect.y + rect.height * 0.5f;
+        float off = rect.width * 0.25f;
+        float r = rect.width * 0.085f;
+        Color col = ColorAlpha(pipColor, alpha);
+
+        auto drawPip = [&](float px, float py) {
+            DrawCircleV({ px, py }, r + 0.8f, Fade(BLACK, 0.6f * alpha));
+            DrawCircleV({ px, py }, r, col);
+            };
+
+        if (value == 1 || value == 3 || value == 5) drawPip(cx, cy);
+        if (value >= 2) {
+            drawPip(cx - off, cy - off);
+            drawPip(cx + off, cy + off);
+        }
+        if (value >= 4) {
+            drawPip(cx + off, cy - off);
+            drawPip(cx - off, cy + off);
+        }
+        if (value == 6) {
+            drawPip(cx - off, cy);
+            drawPip(cx + off, cy);
+        }
+    }
+
+    // Тимчасова векторна заглушка іконки, поки текстура не завантажена
+    void DrawPlaceholderKeyGlyph(int slotIndex, Vector2 center, float size, Color col) {
+        if (slotIndex == 0) {
+            // RoomKey — силует ключа
+            DrawCircleLinesV({ center.x - size * 0.22f, center.y }, size * 0.22f, col);
+            DrawLineEx({ center.x, center.y }, { center.x + size * 0.36f, center.y }, 2.0f, col);
+            DrawLineEx({ center.x + size * 0.22f, center.y }, { center.x + size * 0.22f, center.y + size * 0.18f }, 2.0f, col);
+            DrawLineEx({ center.x + size * 0.34f, center.y }, { center.x + size * 0.34f, center.y + size * 0.18f }, 2.0f, col);
+        }
+        else if (slotIndex == 1) {
+            // SafeKeyCard — перфорована картка
+            Rectangle card = { center.x - size * 0.34f, center.y - size * 0.24f, size * 0.68f, size * 0.48f };
+            DrawRectangleLinesEx(card, 1.6f, col);
+            DrawLineEx({ card.x + 3.0f, card.y + card.height * 0.35f }, { card.x + card.width - 3.0f, card.y + card.height * 0.35f }, 2.2f, col);
+            DrawPoly({ card.x + card.width * 0.72f, card.y + card.height * 0.68f }, 4, 3.2f, 0.0f, col);
+        }
+        else {
+            // MasterKey — подвійний золотий ромб
+            DrawPolyLinesEx(center, 4, size * 0.36f, 0.0f, 1.8f, col);
+            DrawPoly(center, 4, size * 0.16f, 0.0f, col);
+        }
+    }
+}
+
 void GameplayUI::Init() {
     // Генерація короткого тактильного клацання при наведенні на кнопки
     Wave clickWave = { 0 };
@@ -232,6 +291,229 @@ void GameplayUI::DrawArtDecoButton(const UiButton& btn, float animTime) {
     }
 }
 
+void GameplayUI::DrawInventorySlots(const GameplayHudData& data, float screenW, float screenH) const {
+    struct SlotInfo {
+        bool owned;
+        const char* texKey;
+        const char* shortLabel;
+        Color activeColor;
+    };
+
+    const SlotInfo slots[3] = {
+        { data.hasRoomKey,     "icon_room_key",   "ROOM KEY",   GOLD },
+        { data.hasSafeKeyCard, "icon_safe_card",  "SAFE CARD",  Color{ 110, 225, 175, 255 } },
+        { data.hasMasterKey,   "icon_master_key", "MASTER KEY", Color{ 255, 226, 110, 255 } }
+    };
+
+    const float slotSize = 56.0f;
+    const float slotGap = 14.0f;
+    const float totalW = slotSize * 3.0f + slotGap * 2.0f;
+    const float rightEdge = screenW - 46.0f;
+    const float startX = rightEdge - totalW;
+    const float slotY = screenH - 48.0f - slotSize;
+
+    // Заголовок блоку інвентарю (симетрично до "STAMINA" зліва)
+    const char* invHeader = "KEYRING // ACCESS";
+    int headerW = MeasureText(invHeader, 13);
+    DrawText(invHeader, (int)(rightEdge - headerW - 14.0f), (int)(slotY - 22.0f), 13, ColorAlpha(GOLD, 0.88f));
+
+    // Бокові декоративні ромби лінії
+    DrawPoly({ startX - 12.0f, slotY + slotSize * 0.5f }, 4, 5.5f, 0.0f, ColorAlpha(GOLD, 0.75f));
+    DrawPoly({ rightEdge + 12.0f, slotY + slotSize * 0.5f }, 4, 7.0f, 0.0f, ColorAlpha(GOLD, 0.90f));
+    DrawPolyLinesEx({ rightEdge + 12.0f, slotY + slotSize * 0.5f }, 4, 11.0f, 0.0f, 1.2f, ColorAlpha(GOLD, 0.45f));
+
+    for (int i = 0; i < 3; ++i) {
+        float x = startX + i * (slotSize + slotGap);
+        Rectangle outer = { x, slotY, slotSize, slotSize };
+        Rectangle inner = { x + 4.0f, slotY + 4.0f, slotSize - 8.0f, slotSize - 8.0f };
+        Vector2 center = { x + slotSize * 0.5f, slotY + slotSize * 0.5f };
+
+        bool owned = slots[i].owned;
+        Color accent = owned ? slots[i].activeColor : Color{ 95, 95, 102, 160 };
+
+        // Тінь і обсидіановий фон слоту
+        DrawRectangle((int)outer.x + 3, (int)outer.y + 4, (int)outer.width, (int)outer.height, Fade(BLACK, 0.75f));
+        DrawRectangleRec(outer, owned ? Color{ 16, 18, 22, 230 } : Color{ 10, 11, 14, 195 });
+
+        if (owned) {
+            float pulse = 0.75f + 0.25f * sinf(data.shaderTime * 3.0f + (float)i);
+            DrawRectangleRec(outer, ColorAlpha(accent, 0.10f * pulse));
+        }
+
+        DrawRectangleLinesEx(outer, owned ? 1.6f : 1.1f, ColorAlpha(accent, owned ? 0.88f : 0.35f));
+        DrawRectangleLinesEx(inner, 1.0f, ColorAlpha(accent, owned ? 0.30f : 0.12f));
+
+        // Кутові ромбики активного слоту
+        if (owned) {
+            DrawPoly({ inner.x, inner.y }, 4, 2.8f, 0.0f, accent);
+            DrawPoly({ inner.x + inner.width, inner.y }, 4, 2.8f, 0.0f, accent);
+            DrawPoly({ inner.x, inner.y + inner.height }, 4, 2.8f, 0.0f, accent);
+            DrawPoly({ inner.x + inner.width, inner.y + inner.height }, 4, 2.8f, 0.0f, accent);
+        }
+
+        // Текстура предмета (якщо вже додана) або стилізована заглушка
+        Texture2D iconTex = AssetManager::Instance().GetTexture(slots[i].texKey);
+        if (iconTex.id > 0) {
+            float pad = 9.0f;
+            float avail = slotSize - pad * 2.0f;
+            float scale = fminf(avail / (float)iconTex.width, avail / (float)iconTex.height);
+            float drawW = (float)iconTex.width * scale;
+            float drawH = (float)iconTex.height * scale;
+
+            Rectangle src = { 0.0f, 0.0f, (float)iconTex.width, (float)iconTex.height };
+            Rectangle dst = { center.x - drawW * 0.5f, center.y - drawH * 0.5f, drawW, drawH };
+            Color tint = owned ? WHITE : ColorAlpha(WHITE, 0.14f);
+            DrawTexturePro(iconTex, src, dst, { 0.0f, 0.0f }, 0.0f, tint);
+        }
+        else {
+            Color glyphCol = owned ? accent : ColorAlpha(GRAY, 0.22f);
+            DrawPlaceholderKeyGlyph(i, center, slotSize * 0.72f, glyphCol);
+        }
+
+        // Підпис під слотом
+        const char* subText = owned ? slots[i].shortLabel : "EMPTY";
+        int subSize = 10;
+        int subW = MeasureText(subText, subSize);
+        DrawText(
+            subText,
+            (int)(center.x - subW * 0.5f),
+            (int)(slotY + slotSize + 5.0f),
+            subSize,
+            owned ? ColorAlpha(accent, 0.90f) : ColorAlpha(GRAY, 0.42f)
+        );
+    }
+}
+
+void GameplayUI::DrawInteractPrompt(float animTime) const {
+    float screenW = (float)GetScreenWidth();
+    float screenH = (float)GetScreenHeight();
+    float pulse = 0.85f + 0.15f * sinf(animTime * 4.5f);
+
+    const char* label = "INTERACT";
+    int labelSize = 17;
+    int labelW = MeasureText(label, labelSize);
+
+    float keySize = 28.0f;
+    float padX = 18.0f;
+    float gap = 12.0f;
+    float boxW = padX * 2.0f + keySize + gap + (float)labelW;
+    float boxH = 44.0f;
+    float boxX = (screenW - boxW) * 0.5f;
+    float boxY = screenH - 134.0f;
+
+    Rectangle rect = { boxX, boxY, boxW, boxH };
+    Rectangle inner = { boxX + 4.0f, boxY + 4.0f, boxW - 8.0f, boxH - 8.0f };
+
+    DrawRectangle((int)boxX + 3, (int)boxY + 4, (int)boxW, (int)boxH, Fade(BLACK, 0.78f));
+    DrawRectangleRec(rect, Color{ 11, 12, 16, 232 });
+    DrawRectangleLinesEx(rect, 1.5f, ColorAlpha(GOLD, 0.85f * pulse));
+    DrawRectangleLinesEx(inner, 1.0f, ColorAlpha(GOLD, 0.28f));
+
+    // Бокові ромби та вусики
+    float midY = boxY + boxH * 0.5f;
+    DrawLineEx({ boxX - 24.0f, midY }, { boxX - 6.0f, midY }, 1.2f, ColorAlpha(GOLD, 0.55f));
+    DrawLineEx({ boxX + boxW + 6.0f, midY }, { boxX + boxW + 24.0f, midY }, 1.2f, ColorAlpha(GOLD, 0.55f));
+    DrawPoly({ boxX - 6.0f, midY }, 4, 4.5f, 0.0f, GOLD);
+    DrawPoly({ boxX + boxW + 6.0f, midY }, 4, 4.5f, 0.0f, GOLD);
+
+    // Клавіша [ E ] у стилі об'ємного кейкапа
+    float keyX = boxX + padX;
+    float keyY = boxY + (boxH - keySize) * 0.5f - 1.0f;
+    Rectangle keyBase = { keyX, keyY + 2.5f, keySize, keySize };
+    Rectangle keyTop = { keyX, keyY, keySize, keySize };
+
+    DrawRectangleRounded(keyBase, 0.22f, 6, Color{ 110, 84, 30, 255 });
+    DrawRectangleRounded(keyTop, 0.22f, 6, Color{ 18, 20, 26, 255 });
+    DrawRectangleRoundedLinesEx(keyTop, 0.22f, 6, 1.4f, GOLD);
+
+    int eSize = 16;
+    int eW = MeasureText("E", eSize);
+    DrawText("E", (int)(keyX + (keySize - eW) * 0.5f), (int)(keyY + (keySize - eSize) * 0.5f), eSize, Color{ 255, 234, 155, 255 });
+
+    // Напис INTERACT
+    float textX = keyX + keySize + gap;
+    float textY = boxY + (boxH - labelSize) * 0.5f;
+    DrawText(label, (int)textX + 1, (int)textY + 1, labelSize, Fade(BLACK, 0.85f));
+    DrawText(label, (int)textX, (int)textY, labelSize, Color{ 245, 236, 210, 255 });
+}
+
+void GameplayUI::DrawStatusNotification(const std::string& text, Color accentColor, float timer, float maxDuration, float animTime) const {
+    if (timer <= 0.0f || text.empty()) return;
+
+    float fadeIn = Clamp((maxDuration - timer) / 0.18f, 0.0f, 1.0f);
+    float fadeOut = Clamp(timer / 0.35f, 0.0f, 1.0f);
+    float alpha = fminf(fadeIn, fadeOut);
+
+    float screenW = (float)GetScreenWidth();
+    float screenH = (float)GetScreenHeight();
+
+    int fontSize = 18;
+    int textW = MeasureText(text.c_str(), fontSize);
+    float boxW = (float)textW + 64.0f;
+    float boxH = 42.0f;
+    float boxX = (screenW - boxW) * 0.5f;
+    float boxY = screenH - 188.0f - (1.0f - fadeIn) * 8.0f;
+
+    Rectangle rect = { boxX, boxY, boxW, boxH };
+    Rectangle inner = { boxX + 4.0f, boxY + 4.0f, boxW - 8.0f, boxH - 8.0f };
+
+    DrawRectangle((int)boxX + 3, (int)boxY + 4, (int)boxW, (int)boxH, Fade(BLACK, 0.78f * alpha));
+    DrawRectangleRec(rect, ColorAlpha(Color{ 12, 11, 15, 255 }, 0.92f * alpha));
+    DrawRectangleRec(rect, ColorAlpha(accentColor, 0.12f * alpha));
+
+    DrawRectangleLinesEx(rect, 1.6f, ColorAlpha(accentColor, 0.90f * alpha));
+    DrawRectangleLinesEx(inner, 1.0f, ColorAlpha(accentColor, 0.32f * alpha));
+
+    float midY = boxY + boxH * 0.5f;
+    DrawPoly({ boxX + 16.0f, midY }, 4, 4.5f, animTime * 40.0f, ColorAlpha(accentColor, alpha));
+    DrawPoly({ boxX + boxW - 16.0f, midY }, 4, 4.5f, -animTime * 40.0f, ColorAlpha(accentColor, alpha));
+
+    int tx = (int)(boxX + (boxW - (float)textW) * 0.5f);
+    int ty = (int)(boxY + (boxH - (float)fontSize) * 0.5f);
+    DrawText(text.c_str(), tx + 1, ty + 1, fontSize, Fade(BLACK, 0.85f * alpha));
+    DrawText(text.c_str(), tx, ty, fontSize, ColorAlpha(RAYWHITE, 0.96f * alpha));
+}
+
+void GameplayUI::DrawDiceRollWorld(Vector2 playerHeadWorldPos, int d1, int d2, int sum, float timer, float duration) const {
+    if (timer <= 0.0f) return;
+
+    float elapsed = duration - timer;
+    float alpha = Clamp(timer / 0.28f, 0.0f, 1.0f);
+    float riseOffset = Clamp(elapsed / 0.25f, 0.0f, 1.0f) * 6.0f;
+
+    // Коротка імітація перекочування граней у перші 0.22 с
+    bool isRolling = (elapsed < 0.22f);
+    int shownD1 = isRolling ? GetRandomValue(1, 6) : d1;
+    int shownD2 = isRolling ? GetRandomValue(1, 6) : d2;
+    float shakeX = isRolling ? (float)GetRandomValue(-2, 2) : 0.0f;
+    float shakeY = isRolling ? (float)GetRandomValue(-2, 2) : 0.0f;
+
+    const float dieSize = 20.0f;
+    const float gap = 5.0f;
+    const float totalW = dieSize * 2.0f + gap;
+    float startX = playerHeadWorldPos.x - totalW * 0.5f + shakeX;
+    float startY = playerHeadWorldPos.y - 26.0f - riseOffset + shakeY;
+
+    Color accent = (sum >= 7) ? GOLD : Color{ 235, 65, 72, 255 };
+
+    DrawArtDecoDieFace({ startX, startY, dieSize, dieSize }, shownD1, accent, RAYWHITE, alpha);
+    DrawArtDecoDieFace({ startX + dieSize + gap, startY, dieSize, dieSize }, shownD2, accent, RAYWHITE, alpha);
+
+    if (!isRolling) {
+        const char* sumText = TextFormat("= %d", sum);
+        int fontSize = 12;
+        int tw = MeasureText(sumText, fontSize);
+        float badgeW = (float)tw + 10.0f;
+        float badgeH = 16.0f;
+        float bx = playerHeadWorldPos.x - badgeW * 0.5f;
+        float by = startY - badgeH - 3.0f;
+
+        DrawRectangle((int)bx, (int)by, (int)badgeW, (int)badgeH, ColorAlpha(Color{ 10, 11, 14, 255 }, 0.88f * alpha));
+        DrawRectangleLinesEx({ bx, by, badgeW, badgeH }, 1.0f, ColorAlpha(accent, 0.85f * alpha));
+        DrawText(sumText, (int)(bx + 5.0f), (int)(by + 2.0f), fontSize, ColorAlpha(accent, alpha));
+    }
+}
+
 void GameplayUI::DrawHud(const GameplayHudData& data) const {
     float screenW = (float)GetScreenWidth();
     float screenH = (float)GetScreenHeight();
@@ -263,8 +545,8 @@ void GameplayUI::DrawHud(const GameplayHudData& data) const {
     DrawLineEx({ margin, screenH - margin - arm - 70.0f }, { margin, screenH - margin }, 1.5f, goldLine);
     DrawPoly({ margin, screenH - margin }, 4, 4.5f, 0.0f, goldBright);
 
-    DrawLineEx({ screenW - margin - arm - 130.0f, screenH - margin }, { screenW - margin, screenH - margin }, 1.5f, goldLine);
-    DrawLineEx({ screenW - margin, screenH - margin - arm - 40.0f }, { screenW - margin, screenH - margin }, 1.5f, goldLine);
+    DrawLineEx({ screenW - margin - arm - 230.0f, screenH - margin }, { screenW - margin, screenH - margin }, 1.5f, goldLine);
+    DrawLineEx({ screenW - margin, screenH - margin - arm - 65.0f }, { screenW - margin, screenH - margin }, 1.5f, goldLine);
     DrawPoly({ screenW - margin, screenH - margin }, 4, 4.5f, 0.0f, goldBright);
 
     // =========================================================================
@@ -463,6 +745,11 @@ void GameplayUI::DrawHud(const GameplayHudData& data) const {
     const char* stealthCaption = "VISIBILITY // STANDBY";
     int scW = MeasureText(stealthCaption, 11);
     DrawText(stealthCaption, (int)(stealthCenterX - scW * 0.5f), (int)(stealthDivY + 8.0f), 11, ColorAlpha(LIGHTGRAY, 0.48f));
+
+    // =========================================================================
+    // 5. ПРАВИЙ НИЖНІЙ ПРОСТІР: 3 СЛОТИ ІНВЕНТАРЮ КЛЮЧІВ
+    // =========================================================================
+    DrawInventorySlots(data, screenW, screenH);
 }
 
 void GameplayUI::DrawTeleportOverlay(float alpha, int camNumber) const {

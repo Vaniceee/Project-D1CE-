@@ -28,11 +28,13 @@ void GameplayState::OnInteract(InteractableObject& obj) {
     // --- ФІНАЛЬНІ ВИХІДНІ ДВЕРІ (exit_door_i -> type == "exit") ---
     if (obj.type == "exit") {
         if (!player->HasItem("MasterKey")) {
+            soundSynth.PlayLockedDoor();
             ShowStatusNotification("Locked! Master Key required to escape.", RED, 2.5f);
             GAME_INFO("INTERACT", "Exit door '%s' locked: missing MasterKey.", obj.fullId.c_str());
             return;
         }
 
+        soundSynth.PlayLockOpen();
         obj.isUsed = true;
         isVictoryTriggered = true;
         GAME_INFO("INTERACT", "Player escaped through '%s' with MasterKey! Victory triggered.", obj.fullId.c_str());
@@ -41,6 +43,7 @@ void GameplayState::OnInteract(InteractableObject& obj) {
 
     // --- ПЕРЕВІРКА КАРТКИ ДЛЯ СЕЙФА ---
     if (obj.type == "safe" && !player->HasItem("SafeKeyCard")) {
+        soundSynth.PlayLockedDoor();
         ShowStatusNotification("Locked! Safe Key Card required.", RED, 2.5f);
         GAME_INFO("INTERACT", "Safe '%s' locked: missing SafeKeyCard.", obj.fullId.c_str());
         return;
@@ -53,6 +56,7 @@ void GameplayState::OnInteract(InteractableObject& obj) {
     }
 
     // Кидаємо два кубики
+    soundSynth.PlayDiceRoll();
     lastDice1 = Dice::Roll();
     lastDice2 = Dice::Roll();
     lastDiceSum = lastDice1 + lastDice2;
@@ -70,21 +74,26 @@ void GameplayState::OnInteract(InteractableObject& obj) {
 
     if (opened) {
         obj.isUsed = true;
+        soundSynth.PlayLockOpen();
 
         if (obj.storedItem != nullptr) {
             std::string itemName = obj.storedItem->GetName();
             player->AddItem(std::move(obj.storedItem));
 
             if (itemName == "RoomKey") {
+                soundSynth.PlayKeyPickup();
                 ShowStatusNotification("Found: Guard Room Key!", GREEN, 3.0f);
             }
             else if (itemName == "SafeKeyCard") {
+                soundSynth.PlayCardPickup();
                 ShowStatusNotification("Found: Safe Key Card!", GREEN, 3.0f);
             }
             else if (itemName == "MasterKey") {
+                soundSynth.PlayKeyPickup();
                 ShowStatusNotification("Found: Master Key!", GOLD, 3.0f);
             }
             else {
+                soundSynth.PlayKeyPickup();
                 ShowStatusNotification("Found: " + itemName, GREEN, 2.5f);
             }
 
@@ -97,12 +106,16 @@ void GameplayState::OnInteract(InteractableObject& obj) {
                 obj.fullId.c_str());
         }
     }
+    else {
+        soundSynth.PlayLockFail();
+    }
 }
 
 void GameplayState::ShowStatusNotification(const std::string& text, Color color, float duration) {
     statusNotificationText = text;
     statusNotificationColor = color;
     statusNotificationTimer = duration;
+    statusNotificationDuration = duration;
 }
 
 void GameplayState::Init() {
@@ -145,6 +158,11 @@ void GameplayState::Init() {
     am.LoadTexture("walls", Config::PATH_PNG_WALLS_1);
     am.LoadTexture("walls1", Config::PATH_PNG_WALLS_2);
 
+    // Іконки ключів для слотів інвентарю
+    am.LoadTexture("icon_room_key", Config::PATH_PNG_ICON_ROOM_KEY);
+    am.LoadTexture("icon_safe_card", Config::PATH_PNG_ICON_SAFE_CARD);
+    am.LoadTexture("icon_master_key", Config::PATH_PNG_ICON_MASTER_KEY);
+
     for (int i = 0; i <= 10; ++i) {
         std::string name = "stamina_" + std::to_string(i);
         std::string path = "assets/stamina/bar" + std::to_string(i) + ".png";
@@ -162,6 +180,7 @@ void GameplayState::Init() {
     am.LoadMusic("guard_chase", Config::PATH_AUDIO_GUARD_CHASE);
 
     hudUI.Init();
+    soundSynth.Init();
     gameMap.Load(Config::PATH_MAP);
     gameMap.DistributeLoot();
     statusNotificationTimer = 0.0f;
@@ -177,7 +196,6 @@ void GameplayState::Init() {
     lightVelocity = { 0.0f, 0.0f };
     isLightPosInitialized = true;
 
-    // Ініціалізація підказок керування на підлозі стартової кімнати
     floorHint.anchorPos = {
         startFoot.x + startFoot.width * 0.5f,
         startFoot.y + startFoot.height
@@ -234,6 +252,7 @@ void GameplayState::Cleanup() {
     if (guard) {
         guard->StopAudio();
     }
+    soundSynth.Cleanup();
     hudUI.Cleanup();
     gameMap.Unload();
 
@@ -304,10 +323,8 @@ void GameplayState::Update() {
         return;
     }
 
-
     if (sumDisplayTimer > 0.0f) {
         sumDisplayTimer -= dt;
-
         if (sumDisplayTimer < 0.0f) {
             sumDisplayTimer = 0.0f;
         }
@@ -393,7 +410,6 @@ void GameplayState::Update() {
         player->Update(gameMap);
     }
 
-    // Оновлення підказок на підлозі стартової кімнати
     floorHint.time = shaderTime;
     if (!isMovementBlocked) {
         if (player->IsMoving()) {
@@ -433,6 +449,7 @@ void GameplayState::Update() {
 
         GuardState nowState = guard->GetCurrentState();
         if (nowState == GuardState::CHASE && lastGuardState != GuardState::CHASE) {
+            soundSynth.PlayGuardAlert();
             detectionFlashTimer = 0.42f;
             damageImpulse = fmaxf(damageImpulse, 0.65f);
             gameCamera.AddTrauma(0.38f);
@@ -489,8 +506,8 @@ void GameplayState::Update() {
     }
 
     Rectangle footCollider = player->GetFootCollider();
-    showInteractHint = false;    //
-    // Перевірка взаємодії з об'єктами (_i) на клавішу E
+    showInteractHint = false;
+
     if (!isMovementBlocked) {
         InteractableObject* interactable = gameMap.GetInteractableAt(footCollider);
         if (interactable != nullptr && !interactable->isUsed) {
@@ -515,12 +532,14 @@ void GameplayState::Update() {
         if (isInTriggerNow && !wasInTrigger) {
             // 1. Вхід у кімнату охоронця (потрібен RoomKey)
             if (currentTrigger == "room3_in" && !player->HasItem("RoomKey")) {
+                soundSynth.PlayLockedDoor();
                 ShowStatusNotification("Locked! Guard Room Key required.", RED, 2.5f);
                 GAME_INFO("TELEPORT", "Blocked entry to '%s': missing RoomKey.", currentTrigger.c_str());
                 wasInTrigger = true;
             }
             // 2. Вхід у фінальну кімнату (потрібен MasterKey)
             else if (currentTrigger == "final_in" && !player->HasItem("MasterKey")) {
+                soundSynth.PlayLockedDoor();
                 ShowStatusNotification("Locked! Master Key required.", RED, 2.5f);
                 GAME_INFO("TELEPORT", "Blocked entry to '%s': missing MasterKey.", currentTrigger.c_str());
                 wasInTrigger = true;
@@ -533,6 +552,7 @@ void GameplayState::Update() {
                         guard->OnPlayerTeleported(enteredTriggerCenter);
                     }
 
+                    soundSynth.PlayCamSwitch();
                     player->ResetVelocity();
                     pendingTeleportPos = newPlayerPos;
                     tpPhase = TeleportPhase::FADING_OUT;
@@ -683,50 +703,13 @@ void GameplayState::Draw() {
     BeginMode2D(gameCamera.GetCamera());
     renderSystem.RenderWorld(gameMap, player.get(), guard.get(), &floorHint);
 
-    // --- ВІДОБРАЖЕННЯ РЕЗУЛЬТАТУ КУБИКІВ НАД ГОЛОВОЮ ---
     if (player && sumDisplayTimer > 0.0f) {
-
         Vector2 playerPos = player->GetPosition();
-
-        const char* diceText = TextFormat(
-            "%d + %d = %d",
-            lastDice1,
-            lastDice2,
-            lastDiceSum
-        );
-
-        int fontSize = 16;
-        int textWidth = MeasureText(diceText, fontSize);
-
-        float textX = playerPos.x - textWidth / 2.0f + 25.0f;
-        float textY = playerPos.y - 25.0f;
-
-        // Компактний напівпрозорий фон
-        DrawRectangle(
-            (int)textX - 4,
-            (int)textY - 3,
-            textWidth + 8,
-            fontSize + 6,
-            Fade(BLACK, 0.45f)
-        );
-
-        // Тонка рамка
-        DrawRectangleLines(
-            (int)textX - 4,
-            (int)textY - 3,
-            textWidth + 8,
-            fontSize + 6,
-            Fade(GOLD, 0.8f)
-        );
-
-        // Результат
-        DrawText(
-            diceText,
-            (int)textX,
-            (int)textY,
-            fontSize,
-            GOLD
-        );
+        Vector2 headPos = {
+            playerPos.x + (32.0f * player->GetScale()) * 0.5f,
+            playerPos.y
+        };
+        hudUI.DrawDiceRollWorld(headPos, lastDice1, lastDice2, lastDiceSum, sumDisplayTimer, sumDisplayDuration);
     }
 
     for (const auto& p : sprintDust) {
@@ -773,35 +756,24 @@ void GameplayState::Draw() {
         hudData.shaderTime = shaderTime;
         hudData.cardFlickerTimer = cardFlickerTimer;
         hudData.currentCamNumber = currentCamNumber;
+        hudData.hasRoomKey = player->HasItem("RoomKey");
+        hudData.hasSafeKeyCard = player->HasItem("SafeKeyCard");
+        hudData.hasMasterKey = player->HasItem("MasterKey");
 
         hudUI.DrawHud(hudData);
 
-        // --- ПІДКАЗКА ПРО ВЗАЄМОДІЮ ---
         if (showInteractHint && !isPaused && !isDying) {
-            const char* hintText = "Press E to interact";
-
-            int hintSize = 24;
-            int hintWidth = MeasureText(hintText, hintSize);
-
-            DrawText(
-                hintText,
-                (int)(windowWidth - hintWidth) / 2,
-                (int)(windowHeight - 120),
-                hintSize,
-                YELLOW
-            );
+            hudUI.DrawInteractPrompt(shaderTime);
         }
 
-        // --- СПОВІЩЕННЯ ПРО ЗНАЙДЕНІ КЛЮЧІ / ЗАЧИНЕНІ ДВЕРІ ---
         if (statusNotificationTimer > 0.0f && !statusNotificationText.empty() && !isPaused && !isDying) {
-            int notifSize = 24;
-            int notifWidth = MeasureText(statusNotificationText.c_str(), notifSize);
-            int posX = (int)(windowWidth - notifWidth) / 2;
-            int posY = (int)(windowHeight - 165);
-
-            DrawRectangle(posX - 14, posY - 6, notifWidth + 28, notifSize + 12, Fade(BLACK, 0.75f));
-            DrawRectangleLines(posX - 14, posY - 6, notifWidth + 28, notifSize + 12, Fade(statusNotificationColor, 0.85f));
-            DrawText(statusNotificationText.c_str(), posX, posY, notifSize, statusNotificationColor);
+            hudUI.DrawStatusNotification(
+                statusNotificationText,
+                statusNotificationColor,
+                statusNotificationTimer,
+                statusNotificationDuration,
+                shaderTime
+            );
         }
 
         if (showDebugOverlay) {
