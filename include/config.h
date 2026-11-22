@@ -34,6 +34,7 @@ namespace Config {
 
 	//--------ОХОРОНЕЦЬ (NPC)
 	constexpr const char* PATH_AUDIO_GUARD_CHASE = "assets/music/ChaseSFX.wav";
+	constexpr const char* PATH_AUDIO_GUARD_BREATH = "assets/Guard/Guard_Breathe.wav";
 
 
 

@@ -210,6 +210,7 @@ void GameplayState::Init() {
     Vector2 guardPos = !guardSpawns.empty() ? guardSpawns[0] : Vector2{ 2200.0f, 2464.0f };
     guard = std::make_unique<Guard>(guardPos, 70.0f);
     guard->InitPathfinding(gameMap);
+    guard->SetPatrolWaypoints(gameMap.GetGuardPatrolPoints());
 
     baseCameraZoom = 1.8f;
     gameCamera.Init(startPos, virtualWidth, virtualHeight, baseCameraZoom);
@@ -368,6 +369,8 @@ void GameplayState::Update() {
 
     if (InputManager::IsDebugTogglePressed()) {
         showDebugOverlay = !showDebugOverlay;
+        float activeRadius = showDebugOverlay ? 2500.0f : lightRadius;
+        SetShaderValue(lightShader, radiusLoc, &activeRadius, SHADER_UNIFORM_FLOAT);
     }
 
     if (!player) return;
@@ -610,15 +613,15 @@ void GameplayState::Update() {
         float distToGuard = Vector2Distance(desiredTarget, guardCenter);
 
         const float minDist = 42.0f;
-        const float maxDist = 340.0f;
+        const float maxDist = 460.0f;
         float normalizedDist = Clamp((distToGuard - minDist) / (maxDist - minDist), 0.0f, 1.0f);
         float linearProx = 1.0f - normalizedDist;
 
-        proximity = linearProx * linearProx;
+        proximity = powf(linearProx, 1.65f);
         isChasing = (guard->GetCurrentState() == GuardState::CHASE);
 
         if (isChasing) {
-            proximity = Clamp(proximity * 1.15f, 0.0f, 1.0f);
+            proximity = Clamp(proximity * 1.2f, 0.0f, 1.0f);
         }
     }
 
@@ -644,9 +647,9 @@ void GameplayState::Update() {
     gameCamera.SetZoom(Lerp(gameCamera.GetZoom(), targetZoom, 1.0f - expf(-10.0f * dt)));
     SyncShaderCameraUniforms();
 
-    float flickerFreq = Lerp(8.5f, 22.0f, proximity);
-    float waveAmp = Lerp(0.010f, 0.065f, proximity);
-    float noiseAmp = Lerp(0.004f, 0.052f, proximity);
+    float flickerFreq = Lerp(8.5f, 24.0f, proximity);
+    float waveAmp = Lerp(0.012f, 0.082f, proximity);
+    float noiseAmp = Lerp(0.005f, 0.068f, proximity);
 
     flickerTimer += dt * flickerFreq;
     float rawNoise = ((float)GetRandomValue(-100, 100) / 100.0f) * noiseAmp;
@@ -657,12 +660,12 @@ void GameplayState::Update() {
         lightDipTimer -= dt;
         if (lightDipTimer < 0.0f) lightDipTimer = 0.0f;
     }
-    else if (proximity > 0.25f) {
-        float triggerChancePerSec = proximity * 3.2f;
+    else if (proximity > 0.16f) {
+        float triggerChancePerSec = proximity * 3.8f;
         if (((float)GetRandomValue(0, 10000) / 10000.0f) < triggerChancePerSec * dt) {
-            lightDipDuration = (float)GetRandomValue(13, 19) / 100.0f;
+            lightDipDuration = (float)GetRandomValue(14, 21) / 100.0f;
             lightDipTimer = lightDipDuration;
-            lightDipDepth = ((float)GetRandomValue(7, 15) / 100.0f) * proximity;
+            lightDipDepth = ((float)GetRandomValue(9, 19) / 100.0f) * proximity;
         }
     }
 
@@ -673,7 +676,7 @@ void GameplayState::Update() {
     }
 
     currentFlicker = 1.0f + (sinf(flickerTimer) * waveAmp) + smoothedNoise - activeDip;
-    currentFlicker = Clamp(currentFlicker, 0.65f, 1.08f);
+    currentFlicker = Clamp(currentFlicker, 0.58f, 1.08f);
     SetShaderValue(lightShader, flickerLoc, &currentFlicker, SHADER_UNIFORM_FLOAT);
 
     smoothedDanger = Lerp(smoothedDanger, proximity, 1.0f - expf(-6.0f * dt));

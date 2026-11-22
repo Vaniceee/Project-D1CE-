@@ -16,8 +16,10 @@ enum class GuardState {
 class Guard : public Entity {
 public:
     Guard(Vector2 startPos, float startSpeed = 120.0f, float width = 32.0f, float height = 64.0f);
+    ~Guard();
 
     void InitPathfinding(const GameMap& gameMap);
+    void SetPatrolWaypoints(const std::vector<Vector2>& waypoints);
     void Update() override {}
     void Update(Player& player, const GameMap& gameMap, float dt);
     void Draw() override;
@@ -54,7 +56,7 @@ private:
     float attackCooldownDuration = 1.8f;
     float slowdownFactor = 0.25f;
 
-    // --- ÀÓÄ²Î ÏÎÃÎÍ² ---
+    // --- ÀÓÄ²Î ÏÎÃÎÍ², ÄÈÕÀÍÍß ÒÀ ÂÀÆÊÈÕ ÊĞÎÊ²Â ---
     Music chaseMusic = { 0 };
     bool hasChaseMusic = false;
     bool isChaseAudioEngaged = false;
@@ -66,6 +68,19 @@ private:
     float maxChaseAudioDistance = 360.0f;
     float chaseFadeInSpeed = 4.0f;
     float chaseFadeOutSpeed = 1.1f;
+
+    Sound breathSoundLeft = { 0 };
+    Sound breathSoundRight = { 0 };
+    bool hasBreathSound = false;
+    float maxBreathHearDistance = 390.0f;
+    float currentBreathVolume = 0.0f;
+
+    Sound stepSoundsLeft[4] = { { 0 } };
+    Sound stepSoundsRight[4] = { { 0 } };
+    int stepSoundCount = 0;
+    float footstepTimer = 0.0f;
+    int lastStepIndex = -1;
+    float maxFootstepHearDistance = 480.0f;
 
     // --- Â²ÇÓÀËÜÍÀ ÒÅËÅÃĞÀÔ²ß (Î×² ÒÀ ØËÅÉÔ Ó ÏÎÃÎÍ²) ---
     struct EyeTrailPoint {
@@ -86,6 +101,7 @@ private:
     float teleportCooldown = 0.0f;
     bool pursuingTeleport = false;
     bool returningViaTeleport = false;
+    bool patrolTeleporting = false;
     Vector2 returnTriggerPos = { 0.0f, 0.0f };
 
     // Çàòğèìêà òåëåïîğòàö³¿ ÍÏÑ
@@ -100,6 +116,7 @@ private:
     bool isScanning = false;
     float scanTimer = 0.0f;
     float scanDuration = 3.0f;
+    float waypointStepDuration = 1.0f;
 
     // --- Ô²ÇÈÊÀ ÊÎË²Ç²É (NUDGE) ---
     int activeNudgeY = 0;
@@ -119,8 +136,12 @@ private:
     bool HasClearLineOfSight(Vector2 start, Vector2 end, const GameMap& gameMap) const;
     bool CanMoveDirectlyTo(Vector2 start, Vector2 end, const GameMap& gameMap) const;
     void RequestPathTo(Vector2 target, const GameMap& gameMap);
+    bool FindBestTeleportToward(Vector2 fromPos, Vector2 goalPos, const GameMap& gameMap, Vector2& outTriggerPos, std::vector<Vector2>& outPathToTrigger);
     void UpdateScanningLook(float dt);
+    void UpdateFourWayPatrolLook(float dt);
     void UpdateChaseAudio(float distToPlayer, float dt);
+    void UpdateBreathAudio(Vector2 guardCenter, Vector2 playerCenter, const GameMap& gameMap, float dt);
+    void UpdateFootstepAudio(Vector2 guardCenter, Vector2 playerCenter, bool movedThisFrame, const GameMap& gameMap, float dt);
 
     // Ğóõ
     void MoveWithCollisions(Vector2 moveDir, float moveStep, const GameMap& gameMap);

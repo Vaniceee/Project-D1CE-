@@ -4716,8 +4716,8 @@
                                  "type":"",
                                  "visible":true,
                                  "width":0,
-                                 "x":6023.99999999999,
-                                 "y":1487.69696969697
+                                 "x":5747.39393939393,
+                                 "y":5921.0303030303
                                 }, 
                                 {
                                  "height":0,
@@ -4729,8 +4729,112 @@
                                  "type":"",
                                  "visible":true,
                                  "width":0,
-                                 "x":5592.33333333333,
-                                 "y":195.66666666667
+                                 "x":6092.33333333333,
+                                 "y":4815.66666666667
+                                }, 
+                                {
+                                 "height":0,
+                                 "id":891,
+                                 "name":"patrol_0",
+                                 "opacity":1,
+                                 "point":true,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":5598.66666666667,
+                                 "y":4652
+                                }, 
+                                {
+                                 "height":0,
+                                 "id":892,
+                                 "name":"patrol_1",
+                                 "opacity":1,
+                                 "point":true,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":4333.33333333333,
+                                 "y":1768
+                                }, 
+                                {
+                                 "height":0,
+                                 "id":893,
+                                 "name":"patrol_3",
+                                 "opacity":1,
+                                 "point":true,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":4901.33333333333,
+                                 "y":1764
+                                }, 
+                                {
+                                 "height":0,
+                                 "id":895,
+                                 "name":"patrol_4",
+                                 "opacity":1,
+                                 "point":true,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":4900,
+                                 "y":1149.33333333333
+                                }, 
+                                {
+                                 "height":0,
+                                 "id":896,
+                                 "name":"patrol_5",
+                                 "opacity":1,
+                                 "point":true,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":5445.33333333333,
+                                 "y":489.333333333333
+                                }, 
+                                {
+                                 "height":0,
+                                 "id":897,
+                                 "name":"patrol_6",
+                                 "opacity":1,
+                                 "point":true,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":6116,
+                                 "y":189.333333333333
+                                }, 
+                                {
+                                 "height":0,
+                                 "id":898,
+                                 "name":"patrol_7",
+                                 "opacity":1,
+                                 "point":true,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":5732,
+                                 "y":1318
+                                }, 
+                                {
+                                 "height":0,
+                                 "id":899,
+                                 "name":"patrol_8",
+                                 "opacity":1,
+                                 "point":true,
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":6040,
+                                 "y":1832
                                 }],
                          "opacity":1,
                          "type":"objectgroup",
@@ -5909,7 +6013,7 @@
                                 }],
                          "opacity":1,
                          "type":"objectgroup",
-                         "visible":true,
+                         "visible":false,
                          "x":0,
                          "y":0
                         }, 
@@ -6226,8 +6330,8 @@
                                  "rotation":0,
                                  "type":"",
                                  "visible":true,
-                                 "width":57,
-                                 "x":3558.33333333333,
+                                 "width":90.3333333333335,
+                                 "x":3525,
                                  "y":5388.66666666667
                                 }, 
                                 {
@@ -6280,14 +6384,14 @@
                                 }],
                          "opacity":1,
                          "type":"objectgroup",
-                         "visible":true,
+                         "visible":false,
                          "x":0,
                          "y":0
                         }],
                  "name":"Transparent objects",
                  "opacity":1,
                  "type":"group",
-                 "visible":false,
+                 "visible":true,
                  "x":0,
                  "y":0
                 }],
@@ -6365,7 +6469,7 @@
          "y":0
         }],
  "nextlayerid":27,
- "nextobjectid":891,
+ "nextobjectid":901,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.2",
@@ -14680,7 +14784,6 @@
                  "objectgroup":
                     {
                      "draworder":"index",
-                     "id":2,
                      "name":"",
                      "objects":[
                             {

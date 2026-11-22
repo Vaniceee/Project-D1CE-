@@ -1,10 +1,21 @@
 #include "Guard.h"
 #include "Map.h"
 #include "AssetManager.h"
+#include "Config.h"
 #include "Logger.h"
 #include "raymath.h"
 #include <cmath>
 #include <algorithm>
+
+namespace {
+    float SmoothRotateAngle(float currentRad, float targetRad, float speed, float dt) {
+        float diff = targetRad - currentRad;
+        while (diff > PI) diff -= 2.0f * PI;
+        while (diff < -PI) diff += 2.0f * PI;
+        float alpha = 1.0f - expf(-speed * dt);
+        return currentRad + diff * alpha;
+    }
+}
 
 Guard::Guard(Vector2 startPos, float startSpeed, float width, float height)
     : Entity(startPos, startSpeed, width, height) {
@@ -12,35 +23,394 @@ Guard::Guard(Vector2 startPos, float startSpeed, float width, float height)
     spawnFootPos = GetFootCenter();
 }
 
+Guard::~Guard() {
+    for (int i = 0; i < stepSoundCount; ++i) {
+        if (stepSoundsLeft[i].frameCount > 0) UnloadSound(stepSoundsLeft[i]);
+        if (stepSoundsRight[i].frameCount > 0) UnloadSound(stepSoundsRight[i]);
+    }
+    stepSoundCount = 0;
+
+    if (hasBreathSound) {
+        if (breathSoundLeft.frameCount > 0) UnloadSound(breathSoundLeft);
+        if (breathSoundRight.frameCount > 0) UnloadSound(breathSoundRight);
+        hasBreathSound = false;
+    }
+}
+
 void Guard::InitPathfinding(const GameMap& gameMap) {
     pathfinder.BuildGrid(gameMap);
     spawnFootPos = GetFootCenter();
 
-    chaseMusic = AssetManager::Instance().GetMusic("guard_chase");
+    AssetManager& am = AssetManager::Instance();
+    chaseMusic = am.GetMusic("guard_chase");
     hasChaseMusic = (chaseMusic.stream.buffer != nullptr);
     if (hasChaseMusic) {
         chaseMusic.looping = true;
         SetMusicVolume(chaseMusic, 0.0f);
     }
+
+    // 1. ≤н≥ц≥ал≥зац≥€ розд≥лених стерео-крок≥в
+    for (int i = 0; i < stepSoundCount; ++i) {
+        if (stepSoundsLeft[i].frameCount > 0) UnloadSound(stepSoundsLeft[i]);
+        if (stepSoundsRight[i].frameCount > 0) UnloadSound(stepSoundsRight[i]);
+    }
+    stepSoundCount = 0;
+
+    const char* stepPaths[4] = {
+        Config::PATH_STEP_WOOD_1,
+        Config::PATH_STEP_WOOD_2,
+        Config::PATH_STEP_WOOD_3,
+        Config::PATH_STEP_WOOD_4
+    };
+
+    for (int i = 0; i < 4; ++i) {
+        Wave src = LoadWave(stepPaths[i]);
+        if (src.frameCount == 0) continue;
+
+        float* samples = LoadWaveSamples(src);
+        unsigned int frames = src.frameCount;
+        unsigned int channels = src.channels;
+
+        Wave leftWave = { 0 };
+        leftWave.frameCount = frames;
+        leftWave.sampleRate = src.sampleRate;
+        leftWave.sampleSize = 16;
+        leftWave.channels = 2;
+        leftWave.data = RL_CALLOC(frames * 2, sizeof(short));
+
+        Wave rightWave = { 0 };
+        rightWave.frameCount = frames;
+        rightWave.sampleRate = src.sampleRate;
+        rightWave.sampleSize = 16;
+        rightWave.channels = 2;
+        rightWave.data = RL_CALLOC(frames * 2, sizeof(short));
+
+        short* leftData = (short*)leftWave.data;
+        short* rightData = (short*)rightWave.data;
+
+        for (unsigned int f = 0; f < frames; ++f) {
+            float mono = 0.0f;
+            for (unsigned int c = 0; c < channels; ++c) {
+                mono += samples[f * channels + c];
+            }
+            mono /= (float)channels;
+            short s = (short)(Clamp(mono, -1.0f, 1.0f) * 32767.0f);
+
+            leftData[f * 2 + 0] = s;
+            leftData[f * 2 + 1] = 0;
+
+            rightData[f * 2 + 0] = 0;
+            rightData[f * 2 + 1] = s;
+        }
+
+        stepSoundsLeft[stepSoundCount] = LoadSoundFromWave(leftWave);
+        stepSoundsRight[stepSoundCount] = LoadSoundFromWave(rightWave);
+        stepSoundCount++;
+
+        UnloadWaveSamples(samples);
+        UnloadWave(leftWave);
+        UnloadWave(rightWave);
+        UnloadWave(src);
+    }
+
+    // 2. ≤н≥ц≥ал≥зац≥€ безшовного зацикленого диханн€ охоронц€ (Equal-Power Crossfade на стику)
+    if (hasBreathSound) {
+        if (breathSoundLeft.frameCount > 0) UnloadSound(breathSoundLeft);
+        if (breathSoundRight.frameCount > 0) UnloadSound(breathSoundRight);
+        hasBreathSound = false;
+    }
+
+    Wave breathSrc = LoadWave(Config::PATH_AUDIO_GUARD_BREATH);
+    if (breathSrc.frameCount > 0) {
+        float* rawSamples = LoadWaveSamples(breathSrc);
+        unsigned int totalFrames = breathSrc.frameCount;
+        unsigned int channels = breathSrc.channels;
+        unsigned int sampleRate = breathSrc.sampleRate;
+
+        // «водимо у моно-буфер
+        std::vector<float> monoSamples(totalFrames, 0.0f);
+        for (unsigned int f = 0; f < totalFrames; ++f) {
+            float sum = 0.0f;
+            for (unsigned int c = 0; c < channels; ++c) {
+                sum += rawSamples[f * channels + c];
+            }
+            monoSamples[f] = sum / (float)channels;
+        }
+        UnloadWaveSamples(rawSamples);
+
+        // 1.5-секундний кросфейд: накладаЇмо хв≥ст на початок ≥ обр≥заЇмо довжину кросфейду,
+        // щоб перех≥д з к≥нц€ на початок був абсолютно непом≥тним
+        unsigned int fadeFrames = (unsigned int)(sampleRate * 1.5f);
+        if (fadeFrames > totalFrames / 3) {
+            fadeFrames = totalFrames / 3;
+        }
+        unsigned int loopFrames = totalFrames - fadeFrames;
+
+        if (loopFrames > 0) {
+            Wave leftBreathWave = { 0 };
+            leftBreathWave.frameCount = loopFrames;
+            leftBreathWave.sampleRate = sampleRate;
+            leftBreathWave.sampleSize = 16;
+            leftBreathWave.channels = 2;
+            leftBreathWave.data = RL_CALLOC(loopFrames * 2, sizeof(short));
+
+            Wave rightBreathWave = { 0 };
+            rightBreathWave.frameCount = loopFrames;
+            rightBreathWave.sampleRate = sampleRate;
+            rightBreathWave.sampleSize = 16;
+            rightBreathWave.channels = 2;
+            rightBreathWave.data = RL_CALLOC(loopFrames * 2, sizeof(short));
+
+            short* leftData = (short*)leftBreathWave.data;
+            short* rightData = (short*)rightBreathWave.data;
+
+            for (unsigned int f = 0; f < loopFrames; ++f) {
+                float val = monoSamples[f];
+                if (f < fadeFrames) {
+                    float t = (float)f / (float)fadeFrames;
+                    // Equal-power крива (sin/cos), щоб на стику не прос≥дала гучн≥сть
+                    float fadeIn = sinf(t * PI * 0.5f);
+                    float fadeOut = cosf(t * PI * 0.5f);
+                    float tailVal = monoSamples[loopFrames + f];
+                    val = val * fadeIn + tailVal * fadeOut;
+                }
+
+                short s = (short)(Clamp(val, -1.0f, 1.0f) * 32767.0f);
+                leftData[f * 2 + 0] = s;
+                leftData[f * 2 + 1] = 0;
+
+                rightData[f * 2 + 0] = 0;
+                rightData[f * 2 + 1] = s;
+            }
+
+            breathSoundLeft = LoadSoundFromWave(leftBreathWave);
+            breathSoundRight = LoadSoundFromWave(rightBreathWave);
+            hasBreathSound = true;
+
+            UnloadWave(leftBreathWave);
+            UnloadWave(rightBreathWave);
+        }
+
+        UnloadWave(breathSrc);
+    }
+}
+
+void Guard::SetPatrolWaypoints(const std::vector<Vector2>& waypoints) {
+    patrolWaypoints = waypoints;
+    currentWaypointIndex = 0;
+
+    if (patrolWaypoints.size() > 1 && Vector2Distance(spawnFootPos, patrolWaypoints[0]) < 24.0f) {
+        currentWaypointIndex = 1;
+    }
+
+    GAME_INFO("GUARD", "Loaded %zu patrol waypoints (starting at index %zu)",
+        patrolWaypoints.size(), currentWaypointIndex);
+}
+
+bool Guard::FindBestTeleportToward(Vector2 fromPos, Vector2 goalPos, const GameMap& gameMap, Vector2& outTriggerPos, std::vector<Vector2>& outPathToTrigger) {
+    float bestScore = 1e9f;
+    bool found = false;
+
+    for (const auto& link : gameMap.GetAllTeleportLinks()) {
+        std::vector<Vector2> pathToEntry;
+        bool canReachEntry = CanMoveDirectlyTo(fromPos, link.triggerCenter, gameMap);
+        if (!canReachEntry) {
+            pathToEntry = pathfinder.FindPath(fromPos, link.triggerCenter);
+            canReachEntry = !pathToEntry.empty();
+        }
+        if (!canReachEntry) continue;
+
+        bool exitReachesGoal = CanMoveDirectlyTo(link.destinationCenter, goalPos, gameMap);
+        float exitToGoalDist = Vector2Distance(link.destinationCenter, goalPos);
+
+        if (!exitReachesGoal) {
+            auto pathFromExit = pathfinder.FindPath(link.destinationCenter, goalPos);
+            if (!pathFromExit.empty()) {
+                exitReachesGoal = true;
+                exitToGoalDist = 0.0f;
+                Vector2 prev = link.destinationCenter;
+                for (const Vector2& wp : pathFromExit) {
+                    exitToGoalDist += Vector2Distance(prev, wp);
+                    prev = wp;
+                }
+            }
+        }
+
+        float entryDist = Vector2Distance(fromPos, link.triggerCenter);
+        float score = exitReachesGoal ? (entryDist + exitToGoalDist) : (100000.0f + entryDist + exitToGoalDist);
+
+        if (score < bestScore) {
+            bestScore = score;
+            outTriggerPos = link.triggerCenter;
+            outPathToTrigger = std::move(pathToEntry);
+            found = true;
+        }
+    }
+
+    return found;
 }
 
 void Guard::SetAudioPaused(bool paused) {
-    if (!hasChaseMusic) return;
-    if (paused) {
-        PauseMusicStream(chaseMusic);
+    if (hasChaseMusic) {
+        if (paused) {
+            PauseMusicStream(chaseMusic);
+        }
+        else if (currentChaseVolume > 0.005f) {
+            ResumeMusicStream(chaseMusic);
+        }
     }
-    else if (currentChaseVolume > 0.005f) {
-        ResumeMusicStream(chaseMusic);
+
+    if (hasBreathSound) {
+        if (paused) {
+            PauseSound(breathSoundLeft);
+            PauseSound(breathSoundRight);
+        }
+        else if (currentBreathVolume > 0.005f) {
+            ResumeSound(breathSoundLeft);
+            ResumeSound(breathSoundRight);
+        }
     }
 }
 
 void Guard::StopAudio() {
-    if (!hasChaseMusic) return;
-    StopMusicStream(chaseMusic);
+    if (hasChaseMusic) {
+        StopMusicStream(chaseMusic);
+    }
+    if (hasBreathSound) {
+        StopSound(breathSoundLeft);
+        StopSound(breathSoundRight);
+    }
     currentChaseVolume = 0.0f;
+    currentBreathVolume = 0.0f;
     isChaseAudioEngaged = false;
     chaseIntroTimer = 0.0f;
     chaseAudioSustainTimer = 0.0f;
+    footstepTimer = 0.0f;
+}
+
+void Guard::UpdateBreathAudio(Vector2 guardCenter, Vector2 playerCenter, const GameMap& gameMap, float dt) {
+    if (!hasBreathSound) return;
+
+    float dist = Vector2Distance(guardCenter, playerCenter);
+    float targetVolume = 0.0f;
+
+    if (!isTeleporting && dist < maxBreathHearDistance) {
+        float normDist = Clamp(dist / maxBreathHearDistance, 0.0f, 1.0f);
+        // „им ближче Ќѕ—, тим виразн≥ше чути важке диханн€
+        float distAttenuation = powf(1.0f - normDist, 1.35f);
+        bool hasLOS = HasClearLineOfSight(guardCenter, playerCenter, gameMap);
+        float wallFactor = hasLOS ? 1.0f : 0.58f;
+
+        float stateMaxVol = 0.72f;
+        if (currentState == GuardState::CHASE) {
+            stateMaxVol = 0.95f;
+        }
+        else if (currentState == GuardState::INVESTIGATE) {
+            stateMaxVol = 0.82f;
+        }
+
+        targetVolume = Clamp(stateMaxVol * distAttenuation * wallFactor, 0.0f, 1.0f);
+    }
+
+    float blendAlpha = 1.0f - expf(-6.5f * dt);
+    currentBreathVolume = Lerp(currentBreathVolume, targetVolume, blendAlpha);
+
+    if (currentBreathVolume > 0.004f) {
+        // “римаЇмо обидва канали синхронно зацикленими
+        if (!IsSoundPlaying(breathSoundLeft)) {
+            PlaySound(breathSoundLeft);
+        }
+        if (!IsSoundPlaying(breathSoundRight)) {
+            PlaySound(breathSoundRight);
+        }
+
+        // ѕрискорюЇмо ритм диханн€ у погон≥ / пошуку
+        float targetPitch = 1.0f;
+        if (currentState == GuardState::CHASE) targetPitch = 1.18f;
+        else if (currentState == GuardState::INVESTIGATE) targetPitch = 1.08f;
+
+        float dx = guardCenter.x - playerCenter.x;
+        float panOffset = Clamp(dx / 220.0f, -1.0f, 1.0f);
+
+        float angle = (panOffset + 1.0f) * 0.25f * PI;
+        float leftGain = cosf(angle);
+        float rightGain = sinf(angle);
+
+        SetSoundVolume(breathSoundLeft, currentBreathVolume * leftGain);
+        SetSoundPitch(breathSoundLeft, targetPitch);
+
+        SetSoundVolume(breathSoundRight, currentBreathVolume * rightGain);
+        SetSoundPitch(breathSoundRight, targetPitch);
+    }
+    else {
+        currentBreathVolume = 0.0f;
+        if (IsSoundPlaying(breathSoundLeft)) StopSound(breathSoundLeft);
+        if (IsSoundPlaying(breathSoundRight)) StopSound(breathSoundRight);
+    }
+}
+
+void Guard::UpdateFootstepAudio(Vector2 guardCenter, Vector2 playerCenter, bool movedThisFrame, const GameMap& gameMap, float dt) {
+    if (stepSoundCount == 0 || isTeleporting || !movedThisFrame) {
+        if (!movedThisFrame && footstepTimer > 0.14f) {
+            footstepTimer = 0.14f;
+        }
+        return;
+    }
+
+    footstepTimer -= dt;
+    if (footstepTimer > 0.0f) return;
+
+    float stepInterval = 0.64f;
+    if (currentState == GuardState::CHASE) {
+        stepInterval = 0.34f;
+    }
+    else if (currentState == GuardState::INVESTIGATE) {
+        stepInterval = 0.48f;
+    }
+    footstepTimer = stepInterval;
+
+    float dist = Vector2Distance(guardCenter, playerCenter);
+    if (dist > maxFootstepHearDistance) return;
+
+    int idx = GetRandomValue(0, stepSoundCount - 1);
+    if (stepSoundCount > 1 && idx == lastStepIndex) {
+        idx = (idx + 1) % stepSoundCount;
+    }
+    lastStepIndex = idx;
+
+    float normDist = Clamp(dist / maxFootstepHearDistance, 0.0f, 1.0f);
+    float distAttenuation = powf(1.0f - normDist, 1.45f);
+    bool hasLOS = HasClearLineOfSight(guardCenter, playerCenter, gameMap);
+    float wallFactor = hasLOS ? 1.0f : 0.62f;
+
+    float baseVolume = (currentState == GuardState::CHASE) ? 0.92f : 0.78f;
+    float finalVolume = Clamp(baseVolume * distAttenuation * wallFactor, 0.0f, 1.0f);
+    if (finalVolume < 0.02f) return;
+
+    float pitch = (currentState == GuardState::CHASE)
+        ? ((float)GetRandomValue(72, 80) / 100.0f)
+        : ((float)GetRandomValue(60, 68) / 100.0f);
+
+    float dx = guardCenter.x - playerCenter.x;
+    float panOffset = Clamp(dx / 220.0f, -1.0f, 1.0f);
+
+    float angle = (panOffset + 1.0f) * 0.25f * PI;
+    float leftGain = cosf(angle);
+    float rightGain = sinf(angle);
+
+    float leftVol = finalVolume * leftGain;
+    float rightVol = finalVolume * rightGain;
+
+    if (leftVol > 0.005f) {
+        SetSoundVolume(stepSoundsLeft[idx], leftVol);
+        SetSoundPitch(stepSoundsLeft[idx], pitch);
+        PlaySound(stepSoundsLeft[idx]);
+    }
+    if (rightVol > 0.005f) {
+        SetSoundVolume(stepSoundsRight[idx], rightVol);
+        SetSoundPitch(stepSoundsRight[idx], pitch);
+        PlaySound(stepSoundsRight[idx]);
+    }
 }
 
 void Guard::UpdateChaseAudio(float distToPlayer, float dt) {
@@ -74,7 +444,7 @@ void Guard::UpdateChaseAudio(float distToPlayer, float dt) {
         normalizedDist = Clamp(normalizedDist, 0.0f, 1.0f);
 
         float proximity = 1.0f - normalizedDist;
-        targetVolume = Lerp(0.15f, 0.85f, proximity);
+        targetVolume = Lerp(0.07f, 0.40f, proximity);
 
         if (currentState == GuardState::INVESTIGATE) {
             targetVolume *= 0.75f;
@@ -151,6 +521,7 @@ void Guard::OnPlayerTeleported(Vector2 enteredTriggerCenter) {
         currentState = GuardState::INVESTIGATE;
         pursuingTeleport = true;
         returningViaTeleport = false;
+        patrolTeleporting = false;
         chaseMemoryTimer = 0.0f;
         lastKnownPlayerPos = enteredTriggerCenter;
         isScanning = false;
@@ -260,6 +631,25 @@ void Guard::UpdateScanningLook(float dt) {
     facingAngle = baseLookAngle + sweepOffset;
 }
 
+void Guard::UpdateFourWayPatrolLook(float dt) {
+    scanTimer += dt;
+
+    int stepIndex = (int)(scanTimer / waypointStepDuration);
+    if (stepIndex > 3) stepIndex = 3;
+
+    float stepLocalTime = fmodf(scanTimer, waypointStepDuration);
+    const float turnTransition = 0.45f;
+
+    float prevOffsetDeg = (stepIndex > 0) ? ((float)(stepIndex - 1) * 90.0f) : 0.0f;
+    float targetOffsetDeg = (float)stepIndex * 90.0f;
+
+    float t = (stepIndex == 0) ? 1.0f : Clamp(stepLocalTime / turnTransition, 0.0f, 1.0f);
+    float smoothT = t * t * t * (t * (t * 6.0f - 15.0f) + 10.0f);
+
+    float currentOffsetDeg = Lerp(prevOffsetDeg, targetOffsetDeg, smoothT);
+    facingAngle = baseLookAngle + currentOffsetDeg * DEG2RAD;
+}
+
 void Guard::MoveWithCollisions(Vector2 moveDir, float moveStep, const GameMap& gameMap) {
     const float nudgeTolerance = 13.0f;
 
@@ -341,7 +731,9 @@ void Guard::FollowPath(float moveSpeed, const GameMap& gameMap, float dt) {
     Vector2 dir = Vector2Subtract(targetWaypoint, guardCenter);
     if (Vector2Length(dir) > 0.0f) {
         dir = Vector2Normalize(dir);
-        facingAngle = atan2f(dir.y, dir.x);
+        float targetAngle = atan2f(dir.y, dir.x);
+        float turnSpeed = (currentState == GuardState::CHASE) ? 14.0f : 7.5f;
+        facingAngle = SmoothRotateAngle(facingAngle, targetAngle, turnSpeed, dt);
         MoveWithCollisions(dir, moveSpeed * dt, gameMap);
     }
 }
@@ -358,8 +750,12 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
         }
     }
 
+    Rectangle playerFoot = player.GetFootCollider();
+    Vector2 playerFootCenter = { playerFoot.x + playerFoot.width / 2.0f, playerFoot.y + playerFoot.height / 2.0f };
+
     if (isTeleporting) {
         teleportTimer -= dt;
+        UpdateBreathAudio(GetFootCenter(), playerFootCenter, gameMap, dt);
         UpdateChaseAudio(9999.0f, dt);
         if (teleportTimer <= 0.0f) {
             isTeleporting = false;
@@ -374,6 +770,10 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
                 returningViaTeleport = false;
                 currentState = GuardState::PATROL;
                 isScanning = false;
+                if (patrolTeleporting) {
+                    patrolTeleporting = false;
+                    pathUpdateTimer = 0.0f;
+                }
             }
             else {
                 currentState = GuardState::INVESTIGATE;
@@ -400,11 +800,8 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
         pathUpdateTimer -= dt;
     }
 
-    Vector2 guardFootCenter = GetFootCenter();
-    Rectangle playerFoot = player.GetFootCollider();
-    Vector2 playerFootCenter = { playerFoot.x + playerFoot.width / 2.0f, playerFoot.y + playerFoot.height / 2.0f };
+    Vector2 posBeforeMove = position;
 
-    float distToPlayer = Vector2Distance(guardFootCenter, playerFootCenter);
     bool detectedNow = CanDetectPlayer(player, gameMap);
 
     if (pursuingTeleport && Vector2Distance(playerFootCenter, lastKnownPlayerPos) < 48.0f) {
@@ -414,6 +811,7 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
     if (detectedNow) {
         pursuingTeleport = false;
         returningViaTeleport = false;
+        patrolTeleporting = false;
         if (currentState != GuardState::CHASE) {
             currentState = GuardState::CHASE;
             currentPath.clear();
@@ -450,25 +848,32 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
         break;
     }
 
+    bool movedThisFrame = (Vector2Distance(posBeforeMove, position) > 0.08f);
+    Vector2 updatedGuardCenter = GetFootCenter();
+    float updatedDistToPlayer = Vector2Distance(updatedGuardCenter, playerFootCenter);
+
     Vector2 newGuardPos;
     if (teleportCooldown <= 0.0f && gameMap.TryGetTeleportDestination(GetFootCollider(), position, newGuardPos)) {
         isTeleporting = true;
         teleportTimer = teleportDuration;
         pendingTeleportPos = newGuardPos;
         currentPath.clear();
+        UpdateBreathAudio(updatedGuardCenter, playerFootCenter, gameMap, dt);
         UpdateChaseAudio(9999.0f, dt);
         GAME_INFO("GUARD", "Guard entering teleport (delay: %.2fs)...", teleportDuration);
         return;
     }
 
-    if (distToPlayer <= attackRadius && attackCooldownTimer <= 0.0f) {
+    if (updatedDistToPlayer <= attackRadius && attackCooldownTimer <= 0.0f) {
         if (!player.IsInvincible()) {
             player.TakeDamage(1);
             attackCooldownTimer = attackCooldownDuration;
         }
     }
 
-    UpdateChaseAudio(distToPlayer, dt);
+    UpdateBreathAudio(updatedGuardCenter, playerFootCenter, gameMap, dt);
+    UpdateFootstepAudio(updatedGuardCenter, playerFootCenter, movedThisFrame, gameMap, dt);
+    UpdateChaseAudio(updatedDistToPlayer, dt);
 
     if (currentState == GuardState::CHASE && !isTeleporting) {
         eyeTrailSpawnTimer -= dt;
@@ -501,7 +906,7 @@ void Guard::UpdatePatrolState(const GameMap& gameMap, float dt) {
         if (distToDoor > 3.0f && CanMoveDirectlyTo(guardCenter, returnTriggerPos, gameMap)) {
             currentPath.clear();
             Vector2 dir = Vector2Normalize(Vector2Subtract(returnTriggerPos, guardCenter));
-            facingAngle = atan2f(dir.y, dir.x);
+            facingAngle = SmoothRotateAngle(facingAngle, atan2f(dir.y, dir.x), 7.5f, dt);
             MoveWithCollisions(dir, speed * 0.75f * dt, gameMap);
             return;
         }
@@ -511,20 +916,21 @@ void Guard::UpdatePatrolState(const GameMap& gameMap, float dt) {
         }
         else if (distToDoor > 3.0f) {
             Vector2 dir = Vector2Normalize(Vector2Subtract(returnTriggerPos, guardCenter));
-            facingAngle = atan2f(dir.y, dir.x);
+            facingAngle = SmoothRotateAngle(facingAngle, atan2f(dir.y, dir.x), 7.5f, dt);
             MoveWithCollisions(dir, speed * 0.75f * dt, gameMap);
         }
         return;
     }
 
-    Vector2 targetPoint = spawnFootPos;
+    bool hasWaypoints = !patrolWaypoints.empty();
+    Vector2 targetPoint = hasWaypoints ? patrolWaypoints[currentWaypointIndex] : spawnFootPos;
 
-    if (Vector2Distance(guardCenter, targetPoint) > 12.0f) {
+    if (Vector2Distance(guardCenter, targetPoint) > 14.0f) {
         isScanning = false;
         if (CanMoveDirectlyTo(guardCenter, targetPoint, gameMap)) {
             currentPath.clear();
             Vector2 dir = Vector2Normalize(Vector2Subtract(targetPoint, guardCenter));
-            facingAngle = atan2f(dir.y, dir.x);
+            facingAngle = SmoothRotateAngle(facingAngle, atan2f(dir.y, dir.x), 7.5f, dt);
             MoveWithCollisions(dir, speed * 0.75f * dt, gameMap);
             return;
         }
@@ -533,29 +939,19 @@ void Guard::UpdatePatrolState(const GameMap& gameMap, float dt) {
             RequestPathTo(targetPoint, gameMap);
 
             if (currentPath.empty()) {
-                float bestDist = 1e9f;
-                bool foundExitTrigger = false;
+                Vector2 chosenTrigger = { 0.0f, 0.0f };
+                std::vector<Vector2> pathToTrig;
 
-                for (const Vector2& trigCenter : gameMap.GetAllTriggerCenters()) {
-                    auto pathToTrig = pathfinder.FindPath(guardCenter, trigCenter);
-                    if (!pathToTrig.empty() || CanMoveDirectlyTo(guardCenter, trigCenter, gameMap)) {
-                        float d = Vector2Distance(guardCenter, trigCenter);
-                        if (d < bestDist) {
-                            bestDist = d;
-                            returnTriggerPos = trigCenter;
-                            currentPath = std::move(pathToTrig);
-                            foundExitTrigger = true;
-                        }
-                    }
-                }
-
-                if (foundExitTrigger) {
+                if (FindBestTeleportToward(guardCenter, targetPoint, gameMap, chosenTrigger, pathToTrig)) {
+                    returnTriggerPos = chosenTrigger;
+                    currentPath = std::move(pathToTrig);
                     returningViaTeleport = true;
-                    GAME_INFO("GUARD", "Spawn unreachable directly. Returning via trigger at (%.1f, %.1f)",
-                        returnTriggerPos.x, returnTriggerPos.y);
+                    patrolTeleporting = hasWaypoints;
+                    GAME_INFO("GUARD", "Patrol target %zu in another zone. Moving via trigger at (%.1f, %.1f)",
+                        currentWaypointIndex, returnTriggerPos.x, returnTriggerPos.y);
                 }
                 else {
-                    pathUpdateTimer = 5.0f;
+                    pathUpdateTimer = 3.0f;
                 }
                 return;
             }
@@ -570,7 +966,21 @@ void Guard::UpdatePatrolState(const GameMap& gameMap, float dt) {
             scanTimer = 0.0f;
             baseLookAngle = facingAngle;
         }
-        UpdateScanningLook(dt);
+
+        if (hasWaypoints) {
+            UpdateFourWayPatrolLook(dt);
+
+            if (scanTimer >= waypointStepDuration * 4.0f) {
+                isScanning = false;
+                scanTimer = 0.0f;
+                currentWaypointIndex = (currentWaypointIndex + 1) % patrolWaypoints.size();
+                currentPath.clear();
+                pathUpdateTimer = 0.0f;
+            }
+        }
+        else {
+            UpdateScanningLook(dt);
+        }
     }
 }
 
@@ -583,7 +993,7 @@ void Guard::UpdateInvestigateState(const GameMap& gameMap, float dt) {
         CanMoveDirectlyTo(GetFootCenter(), lastKnownPlayerPos, gameMap)) {
         currentPath.clear();
         Vector2 dir = Vector2Normalize(Vector2Subtract(lastKnownPlayerPos, GetFootCenter()));
-        facingAngle = atan2f(dir.y, dir.x);
+        facingAngle = SmoothRotateAngle(facingAngle, atan2f(dir.y, dir.x), 10.0f, dt);
         MoveWithCollisions(dir, currentMoveSpeed * dt, gameMap);
         return;
     }
@@ -598,7 +1008,7 @@ void Guard::UpdateInvestigateState(const GameMap& gameMap, float dt) {
     }
     else if (pursuingTeleport && distToTarget > stopThreshold) {
         Vector2 dir = Vector2Normalize(Vector2Subtract(lastKnownPlayerPos, GetFootCenter()));
-        facingAngle = atan2f(dir.y, dir.x);
+        facingAngle = SmoothRotateAngle(facingAngle, atan2f(dir.y, dir.x), 10.0f, dt);
         MoveWithCollisions(dir, currentMoveSpeed * dt, gameMap);
     }
     else {
@@ -615,7 +1025,7 @@ void Guard::UpdateInvestigateState(const GameMap& gameMap, float dt) {
             isScanning = false;
             currentState = GuardState::PATROL;
             currentPath.clear();
-            GAME_INFO("GUARD", "Nothing found. State -> PATROL (returning to spawn)");
+            GAME_INFO("GUARD", "Nothing found. State -> PATROL");
         }
     }
 }
@@ -629,7 +1039,7 @@ void Guard::UpdateChaseState(Player& player, const GameMap& gameMap, float dt) {
         Vector2 diff = Vector2Subtract(lastKnownPlayerPos, guardCenter);
         if (Vector2Length(diff) > 2.0f) {
             Vector2 dir = Vector2Normalize(diff);
-            facingAngle = atan2f(dir.y, dir.x);
+            facingAngle = SmoothRotateAngle(facingAngle, atan2f(dir.y, dir.x), 14.0f, dt);
             MoveWithCollisions(dir, currentMoveSpeed * dt, gameMap);
         }
         return;
@@ -677,7 +1087,9 @@ void Guard::DrawDebug() const {
     DrawCircleSector(center, viewDistance, startAngleDeg, endAngleDeg, 24, coneColor);
     DrawCircleSectorLines(center, viewDistance, startAngleDeg, endAngleDeg, 24, ColorAlpha(YELLOW, 0.45f));
 
-    // 2. «они слуху крок≥в (115 px ходьба, 175 px б≥г), дотику (38 px) та атаки (42 px)
+    // 2. «они слуху, чутност≥ крок≥в (480 px), диханн€ (390 px), дотику (38 px) та атаки (42 px)
+    DrawCircleLinesV(center, maxFootstepHearDistance, ColorAlpha(GREEN, 0.14f));
+    DrawCircleLinesV(center, maxBreathHearDistance, ColorAlpha(LIME, 0.18f));
     DrawCircleLinesV(center, hearingSprintRadius, ColorAlpha(VIOLET, 0.22f));
     DrawCircleLinesV(center, hearingWalkRadius, ColorAlpha(SKYBLUE, 0.25f));
     DrawCircleLinesV(center, proximityRadius, ColorAlpha(ORANGE, 0.35f));

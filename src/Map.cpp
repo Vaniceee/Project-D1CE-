@@ -243,6 +243,21 @@ void GameMap::DrawDebug() const {
         DrawCircleV(spawn, 10.0f, ColorAlpha(PURPLE, 0.6f));
         DrawCircleLinesV(spawn, 10.0f, PURPLE);
     }
+
+    // 6. Точки маршруту патрулювання охоронця — бурштинові ромби з номерами
+    for (size_t i = 0; i < data.guardPatrolPoints.size(); ++i) {
+        Vector2 pt = data.guardPatrolPoints[i];
+        DrawPoly(pt, 4, 8.0f, 0.0f, ColorAlpha(ORANGE, 0.75f));
+        DrawPolyLinesEx(pt, 4, 8.0f, 0.0f, 1.5f, GOLD);
+        DrawText(TextFormat("P%d", (int)i), (int)pt.x + 10, (int)pt.y - 6, 12, GOLD);
+
+        if (i + 1 < data.guardPatrolPoints.size()) {
+            DrawLineEx(pt, data.guardPatrolPoints[i + 1], 1.2f, ColorAlpha(ORANGE, 0.45f));
+        }
+        else if (data.guardPatrolPoints.size() > 1) {
+            DrawLineEx(pt, data.guardPatrolPoints[0], 1.2f, ColorAlpha(ORANGE, 0.25f));
+        }
+    }
 }
 
 bool GameMap::CheckWallCollision(Rectangle playerHitbox) const {
@@ -268,7 +283,6 @@ void GameMap::UpdateTriggers(Rectangle playerHitbox) {
         }
     }
 }
-
 
 //---------- Розподіл спавну ключів --------------
 void GameMap::DistributeLoot() {
@@ -379,6 +393,28 @@ std::vector<Vector2> GameMap::GetAllTriggerCenters() const {
             });
     }
     return centers;
+}
+
+std::vector<GameMap::TeleportLink> GameMap::GetAllTeleportLinks() const {
+    std::vector<TeleportLink> links;
+    for (size_t i = 0; i < data.triggers.size(); ++i) {
+        if (i >= data.triggerNames.size()) continue;
+        std::string targetKey = data.triggerNames[i] + "_t";
+        auto it = data.teleportTargets.find(targetKey);
+        if (it != data.teleportTargets.end()) {
+            TeleportLink link;
+            link.triggerCenter = {
+                data.triggers[i].x + data.triggers[i].width * 0.5f,
+                data.triggers[i].y + data.triggers[i].height * 0.5f
+            };
+            link.destinationCenter = {
+                it->second.x + it->second.width * 0.5f,
+                it->second.y + it->second.height * 0.5f
+            };
+            links.push_back(link);
+        }
+    }
+    return links;
 }
 
 InteractableObject* GameMap::GetInteractableAt(Rectangle footHitbox) {

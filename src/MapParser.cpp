@@ -220,8 +220,9 @@ bool MapParser::Parse(const std::string& mapPath, const std::string& defaultTile
     ParseTileLayers(content, outData);
     ParseObjectLayers(content, outData);
 
-    GAME_INFO("MAP_PARSER", "Map parsed: %s (Manual cols: %zu, Auto cols: %zu, Visuals: %zu)",
-        mapPath.c_str(), outData.collisionRects.size(), outData.autoCollisionRects.size(), outData.visualObjects.size());
+    GAME_INFO("MAP_PARSER", "Map parsed: %s (Manual cols: %zu, Auto cols: %zu, Visuals: %zu, Patrol pts: %zu)",
+        mapPath.c_str(), outData.collisionRects.size(), outData.autoCollisionRects.size(),
+        outData.visualObjects.size(), outData.guardPatrolPoints.size());
 
     return true;
 }
@@ -395,7 +396,8 @@ void MapParser::ParseObjectLayers(const std::string& content, MapData& outData) 
             ParseRectLayer(content, layerName, outData.triggers, &outData.triggerNames, &outData.teleportTargets, &outData.interactables);
         }
         else if (lowerLayerName.find("spawn") != std::string::npos ||
-            lowerLayerName.find("entit") != std::string::npos)
+            lowerLayerName.find("entit") != std::string::npos ||
+            lowerLayerName.find("patrol") != std::string::npos)
         {
             ParseSpawnLayer(content, layerName, outData);
         }
@@ -496,6 +498,13 @@ void MapParser::ParseSpawnLayer(const std::string& content, const std::string& l
     std::string objectsText = content.substr(objectsPos, endObjects - objectsPos);
     size_t objStart = objectsText.find("{");
 
+    struct IndexedPoint {
+        int order;
+        Vector2 pos;
+    };
+    std::vector<IndexedPoint> indexedPatrol;
+    int fallbackOrder = 1000;
+
     while (objStart != std::string::npos) {
         size_t objEnd = objStart + 1;
         int braceDepth = 1;
@@ -531,9 +540,29 @@ void MapParser::ParseSpawnLayer(const std::string& content, const std::string& l
             else if (spawnName == "guard") {
                 outData.guardSpawns.push_back({ x, y });
             }
+            else if (spawnName.rfind("patrol", 0) == 0) {
+                int idx = fallbackOrder++;
+                size_t underscorePos = spawnName.find('_');
+                if (underscorePos != std::string::npos && underscorePos + 1 < spawnName.size()) {
+                    try {
+                        idx = std::stoi(spawnName.substr(underscorePos + 1));
+                    }
+                    catch (...) {}
+                }
+                indexedPatrol.push_back({ idx, { x, y } });
+            }
         }
 
         objStart = objectsText.find("{", objEnd);
+    }
+
+    if (!indexedPatrol.empty()) {
+        std::sort(indexedPatrol.begin(), indexedPatrol.end(), [](const IndexedPoint& a, const IndexedPoint& b) {
+            return a.order < b.order;
+            });
+        for (const auto& pt : indexedPatrol) {
+            outData.guardPatrolPoints.push_back(pt.pos);
+        }
     }
 }
 

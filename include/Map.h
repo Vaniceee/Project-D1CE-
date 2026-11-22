@@ -56,10 +56,16 @@ struct MapData {
 
     Vector2 playerSpawn = { 1944.0f, 2464.0f };
     std::vector<Vector2> guardSpawns;
+    std::vector<Vector2> guardPatrolPoints;
 };
 
 class GameMap {
 public:
+    struct TeleportLink {
+        Vector2 triggerCenter;
+        Vector2 destinationCenter;
+    };
+
     bool Load(const std::string& mapPath, const std::string& defaultTilesetKey = "");
     void Unload();
 
@@ -76,6 +82,7 @@ public:
     bool TryGetTeleportDestination(Rectangle playerFootHitbox, Vector2 playerPos, Vector2& outNewPlayerPos) const;
     bool TryGetActiveTriggerCenter(Rectangle footHitbox, Vector2& outTriggerCenter) const;
     std::vector<Vector2> GetAllTriggerCenters() const;
+    std::vector<TeleportLink> GetAllTeleportLinks() const;
     InteractableObject* GetInteractableAt(Rectangle footHitbox);
 
     // Гетери
@@ -87,6 +94,7 @@ public:
     const std::vector<MapVisualObject>& GetVisualObjects() const { return data.visualObjects; }
     Vector2 GetPlayerSpawn() const { return data.playerSpawn; }
     const std::vector<Vector2>& GetGuardSpawns() const { return data.guardSpawns; }
+    const std::vector<Vector2>& GetGuardPatrolPoints() const { return data.guardPatrolPoints; }
 
 private:
     MapData data;
