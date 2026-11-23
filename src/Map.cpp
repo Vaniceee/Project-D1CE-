@@ -7,12 +7,73 @@
 
 bool GameMap::Load(const std::string& mapPath, const std::string& defaultTilesetKey) {
     Unload();
-    return MapParser::Parse(mapPath, defaultTilesetKey, data);
+    if (!MapParser::Parse(mapPath, defaultTilesetKey, data)) {
+        return false;
+    }
+    BuildCollisionGrid();
+    return true;
 }
 
 void GameMap::Unload() {
     data = MapData{};
+    collisionGrid = CollisionSpatialGrid{};
     currentTriggerMessage = "";
+}
+
+void GameMap::BuildCollisionGrid() {
+    collisionGrid = CollisionSpatialGrid{};
+    collisionGrid.cellSize = 256.0f;
+
+    const size_t totalCount = data.collisionRects.size() + data.autoCollisionRects.size();
+    if (totalCount == 0) return;
+
+    float maxWorldX = static_cast<float>(data.mapWidth * data.tileWidth);
+    float maxWorldY = static_cast<float>(data.mapHeight * data.tileHeight);
+
+    auto expandBounds = [&](const Rectangle& r) {
+        maxWorldX = (std::max)(maxWorldX, r.x + r.width);
+        maxWorldY = (std::max)(maxWorldY, r.y + r.height);
+        };
+
+    for (const auto& r : data.collisionRects) expandBounds(r);
+    for (const auto& r : data.autoCollisionRects) expandBounds(r);
+
+    collisionGrid.cols = (std::max)(1, static_cast<int>(std::ceil(maxWorldX / collisionGrid.cellSize)));
+    collisionGrid.rows = (std::max)(1, static_cast<int>(std::ceil(maxWorldY / collisionGrid.cellSize)));
+
+    collisionGrid.allCollisionRects.reserve(totalCount);
+    collisionGrid.cells.resize(static_cast<size_t>(collisionGrid.cols * collisionGrid.rows));
+
+    for (const auto& r : data.collisionRects) {
+        AddCollisionToGrid(r);
+    }
+    for (const auto& r : data.autoCollisionRects) {
+        AddCollisionToGrid(r);
+    }
+
+    collisionGrid.queryVisited.assign(collisionGrid.allCollisionRects.size(), 0);
+    collisionGrid.queryGeneration = 0;
+
+    GAME_INFO("MAP", "Spatial collision grid built: %dx%d chunks (%.0fpx), %zu total colliders",
+        collisionGrid.cols, collisionGrid.rows, collisionGrid.cellSize, collisionGrid.allCollisionRects.size());
+}
+
+void GameMap::AddCollisionToGrid(const Rectangle& rect) {
+    if (rect.width <= 0.0f || rect.height <= 0.0f) return;
+
+    int rectIndex = static_cast<int>(collisionGrid.allCollisionRects.size());
+    collisionGrid.allCollisionRects.push_back(rect);
+
+    int minX = (std::max)(0, static_cast<int>(std::floor(rect.x / collisionGrid.cellSize)));
+    int minY = (std::max)(0, static_cast<int>(std::floor(rect.y / collisionGrid.cellSize)));
+    int maxX = (std::min)(collisionGrid.cols - 1, static_cast<int>(std::floor((rect.x + rect.width - 0.001f) / collisionGrid.cellSize)));
+    int maxY = (std::min)(collisionGrid.rows - 1, static_cast<int>(std::floor((rect.y + rect.height - 0.001f) / collisionGrid.cellSize)));
+
+    for (int cy = minY; cy <= maxY; ++cy) {
+        for (int cx = minX; cx <= maxX; ++cx) {
+            collisionGrid.cells[cy * collisionGrid.cols + cx].push_back(rectIndex);
+        }
+    }
 }
 
 int GameMap::GetRoomIndexAtPoint(Vector2 worldPos) const {
@@ -263,7 +324,34 @@ void GameMap::DrawVisualObject(const MapVisualObject& obj) const {
 }
 
 void GameMap::DrawDebug(int activeRoomIndex) const {
-    // 0. Межі кімнат із шару "rooms" — бірюзовий контур
+    // 0. Просторова сітка колізій (Spatial Grid 256x256 px) — жовта сітка з лічильником об'єктів
+    if (collisionGrid.cols > 0 && collisionGrid.rows > 0) {
+        for (int cy = 0; cy < collisionGrid.rows; ++cy) {
+            for (int cx = 0; cx < collisionGrid.cols; ++cx) {
+                Rectangle cellRect = {
+                    cx * collisionGrid.cellSize,
+                    cy * collisionGrid.cellSize,
+                    collisionGrid.cellSize,
+                    collisionGrid.cellSize
+                };
+                const auto& bucket = collisionGrid.cells[cy * collisionGrid.cols + cx];
+
+                if (!bucket.empty()) {
+                    DrawRectangleRec(cellRect, ColorAlpha(YELLOW, 0.07f));
+                    DrawText(
+                        TextFormat("G[%d,%d]: %d", cx, cy, static_cast<int>(bucket.size())),
+                        static_cast<int>(cellRect.x) + 4,
+                        static_cast<int>(cellRect.y) + 4,
+                        10,
+                        ColorAlpha(YELLOW, 0.85f)
+                    );
+                }
+                DrawRectangleLinesEx(cellRect, 1.0f, ColorAlpha(YELLOW, 0.22f));
+            }
+        }
+    }
+
+    // 0.5 Межі кімнат із шару "rooms" — бірюзовий контур
     for (size_t i = 0; i < data.rooms.size(); ++i) {
         bool isCurrent = (static_cast<int>(i) == activeRoomIndex);
         Color roomCol = isCurrent ? Color{ 0, 235, 210, 255 } : Color{ 70, 130, 150, 180 };
@@ -339,16 +427,53 @@ void GameMap::DrawDebug(int activeRoomIndex) const {
 }
 
 bool GameMap::CheckWallCollision(Rectangle playerHitbox) const {
-    for (const auto& rect : data.collisionRects) {
-        if (CheckCollisionRecs(playerHitbox, rect)) {
-            return true;
+    if (collisionGrid.allCollisionRects.empty() || collisionGrid.cols <= 0 || collisionGrid.rows <= 0) {
+        return false;
+    }
+
+    int minX = (std::max)(0, static_cast<int>(std::floor(playerHitbox.x / collisionGrid.cellSize)));
+    int minY = (std::max)(0, static_cast<int>(std::floor(playerHitbox.y / collisionGrid.cellSize)));
+    int maxX = (std::min)(collisionGrid.cols - 1, static_cast<int>(std::floor((playerHitbox.x + playerHitbox.width) / collisionGrid.cellSize)));
+    int maxY = (std::min)(collisionGrid.rows - 1, static_cast<int>(std::floor((playerHitbox.y + playerHitbox.height) / collisionGrid.cellSize)));
+
+    if (minX > maxX || minY > maxY) {
+        return false;
+    }
+
+    // Оптимізація для найчастішого випадку (об'єкт або промінь у межах одного чанка 256x256)
+    if (minX == maxX && minY == maxY) {
+        const auto& cellIndices = collisionGrid.cells[minY * collisionGrid.cols + minX];
+        for (int rectIdx : cellIndices) {
+            if (CheckCollisionRecs(playerHitbox, collisionGrid.allCollisionRects[rectIdx])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Якщо хітбокс накриває кілька чанків — відсіюємо дублікати через лічильник покоління запитів
+    ++collisionGrid.queryGeneration;
+    if (collisionGrid.queryGeneration == 0) {
+        std::fill(collisionGrid.queryVisited.begin(), collisionGrid.queryVisited.end(), 0);
+        collisionGrid.queryGeneration = 1;
+    }
+    const uint32_t gen = collisionGrid.queryGeneration;
+
+    for (int cy = minY; cy <= maxY; ++cy) {
+        const int rowOffset = cy * collisionGrid.cols;
+        for (int cx = minX; cx <= maxX; ++cx) {
+            const auto& cellIndices = collisionGrid.cells[rowOffset + cx];
+            for (int rectIdx : cellIndices) {
+                if (collisionGrid.queryVisited[rectIdx] == gen) continue;
+                collisionGrid.queryVisited[rectIdx] = gen;
+
+                if (CheckCollisionRecs(playerHitbox, collisionGrid.allCollisionRects[rectIdx])) {
+                    return true;
+                }
+            }
         }
     }
-    for (const auto& rect : data.autoCollisionRects) {
-        if (CheckCollisionRecs(playerHitbox, rect)) {
-            return true;
-        }
-    }
+
     return false;
 }
 

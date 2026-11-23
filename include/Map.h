@@ -48,8 +48,19 @@ struct InteractableObject {
     std::string fullId;       // Наприклад, "locker_1" або "key_room"
     std::string type;         // Наприклад, "locker", "safe", "terminal" (частина до першого '_')
     Rectangle bounds = { 0 }; // Зона спрацьовування перед об'єктом
-    bool isUsed = false;      // Прапоць стану (чи вже взаємодіяли)
+    bool isUsed = false;      // Прапорець стану (чи вже взаємодіяли)
     std::shared_ptr<Item> storedItem = nullptr; // Предмет всередині
+};
+
+// Просторова сітка (Spatial Grid) для швидкої перевірки колізій O(1) по чанках
+struct CollisionSpatialGrid {
+    float cellSize = 256.0f;
+    int cols = 0;
+    int rows = 0;
+    std::vector<Rectangle> allCollisionRects;
+    std::vector<std::vector<int>> cells;
+    mutable std::vector<uint32_t> queryVisited;
+    mutable uint32_t queryGeneration = 0;
 };
 
 // Контейнер для всіх даних, які наповнює MapParser
@@ -120,7 +131,10 @@ public:
 
 private:
     MapData data;
+    CollisionSpatialGrid collisionGrid;
     std::string currentTriggerMessage = "";
 
+    void BuildCollisionGrid();
+    void AddCollisionToGrid(const Rectangle& rect);
     void DrawSingleLayer(const std::vector<int>& layerData, Rectangle viewRect, int activeRoomIndex) const;
 };
