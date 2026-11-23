@@ -82,7 +82,7 @@ private:
     int lastStepIndex = -1;
     float maxFootstepHearDistance = 480.0f;
 
-    // --- б╡гсюкэмю рекецпют╡ъ (нв╡ рю ькеит с онцнм╡) ---
+    // --- б╡гсюкэмю рекецпют╡ъ (WIP)
     struct EyeTrailPoint {
         Vector2 leftEye;
         Vector2 rightEye;

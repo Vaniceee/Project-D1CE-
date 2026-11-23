@@ -72,8 +72,8 @@ private:
     // Стаміна параметри
     float maxStamina = 100.0f;
     float currentStamina = 100.0f;
-    float staminaDrainRate = 15.0f;
-    float staminaRegenRate = 15.0f;
+    float staminaDrainRate = 28.0f;
+    float staminaRegenRate = 17.0f;
     bool isExhausted = false;
 
     // Розміри та зсув для коллайдера в ногах

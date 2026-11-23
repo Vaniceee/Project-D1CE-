@@ -138,8 +138,7 @@ void Guard::InitPathfinding(const GameMap& gameMap) {
         }
         UnloadWaveSamples(rawSamples);
 
-        // 1.5-секундний кросфейд: накладаЇмо хв≥ст на початок ≥ обр≥заЇмо довжину кросфейду,
-        // щоб перех≥д з к≥нц€ на початок був абсолютно непом≥тним
+        
         unsigned int fadeFrames = (unsigned int)(sampleRate * 1.5f);
         if (fadeFrames > totalFrames / 3) {
             fadeFrames = totalFrames / 3;

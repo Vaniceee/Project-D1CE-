@@ -25,7 +25,7 @@ void GameplayState::OnInteract(InteractableObject& obj) {
         return;
     }
 
-    // --- ФІНАЛЬНІ ВИХІДНІ ДВЕРІ (exit_door_i -> type == "exit") ---
+    // --- ФІНАЛЬНІ ВИХІДНІ ДВЕРІ) ---
     if (obj.type == "exit") {
         if (!player->HasItem("MasterKey")) {
             soundSynth.PlayLockedDoor();
@@ -186,7 +186,7 @@ void GameplayState::Init() {
     statusNotificationTimer = 0.0f;
 
     Vector2 startPos = gameMap.GetPlayerSpawn();
-    player = std::make_unique<Player>(startPos, 212.0f, 32.0f, 64.0f, am.GetTexture("player_spritesheet"), 1.45f);
+    player = std::make_unique<Player>(startPos, 112.0f, 32.0f, 64.0f, am.GetTexture("player_spritesheet"), 1.45f);
 
     Rectangle startFoot = player->GetFootCollider();
     lightWorldPos = {
@@ -208,11 +208,11 @@ void GameplayState::Init() {
 
     const auto& guardSpawns = gameMap.GetGuardSpawns();
     Vector2 guardPos = !guardSpawns.empty() ? guardSpawns[0] : Vector2{ 2200.0f, 2464.0f };
-    guard = std::make_unique<Guard>(guardPos, 70.0f);
+    guard = std::make_unique<Guard>(guardPos, 118.0f);
     guard->InitPathfinding(gameMap);
     guard->SetPatrolWaypoints(gameMap.GetGuardPatrolPoints());
 
-    baseCameraZoom = 1.8f;
+    baseCameraZoom = 1.90f;
     gameCamera.Init(startPos, virtualWidth, virtualHeight, baseCameraZoom);
     SyncShaderCameraUniforms();
 
