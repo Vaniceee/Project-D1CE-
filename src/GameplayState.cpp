@@ -707,8 +707,9 @@ void GameplayState::Draw() {
     BeginTextureMode(targetTexture);
     ClearBackground(BLACK);
 
-    BeginMode2D(gameCamera.GetCamera());
-    renderSystem.RenderWorld(gameMap, player.get(), guard.get(), &floorHint);
+    const Camera2D& cam = gameCamera.GetCamera();
+    BeginMode2D(cam);
+    renderSystem.RenderWorld(gameMap, player.get(), guard.get(), cam, virtualWidth, virtualHeight, &floorHint);
 
     if (player && sumDisplayTimer > 0.0f) {
         Vector2 playerPos = player->GetPosition();
@@ -726,7 +727,7 @@ void GameplayState::Draw() {
     }
 
     if (showDebugOverlay) {
-        gameMap.DrawDebug();
+        gameMap.DrawDebug(renderSystem.GetLastActiveRoomIndex());
         if (player) player->DrawDebug();
         if (guard) guard->DrawDebug();
     }
@@ -785,13 +786,18 @@ void GameplayState::Draw() {
 
         if (showDebugOverlay) {
             Rectangle foot = player->GetFootCollider();
-            float dbgY = windowHeight - 178.0f;
-            DrawRectangle(28, (int)dbgY, 360, 82, Fade(BLACK, 0.85f));
-            DrawRectangleLines(28, (int)dbgY, 360, 82, GREEN);
+            int roomIdx = renderSystem.GetLastActiveRoomIndex();
+            const auto& rooms = gameMap.GetRooms();
+            const char* roomName = (roomIdx >= 0 && roomIdx < (int)rooms.size()) ? rooms[roomIdx].name.c_str() : "NONE";
+
+            float dbgY = windowHeight - 200.0f;
+            DrawRectangle(28, (int)dbgY, 380, 104, Fade(BLACK, 0.85f));
+            DrawRectangleLines(28, (int)dbgY, 380, 104, GREEN);
 
             DrawFPS(38, (int)dbgY + 10);
             DrawText(TextFormat("Player Pos: X: %.1f | Y: %.1f", foot.x, foot.y), 38, (int)dbgY + 34, 18, GREEN);
             DrawText(TextFormat("Tile Coords: X: %d | Y: %d", (int)(foot.x / 32.0f), (int)(foot.y / 32.0f)), 38, (int)dbgY + 56, 18, YELLOW);
+            DrawText(TextFormat("Active Room: %s (idx: %d)", roomName, roomIdx), 38, (int)dbgY + 78, 18, SKYBLUE);
         }
     }
 

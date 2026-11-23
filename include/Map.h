@@ -36,13 +36,19 @@ struct MapVisualObject {
     int subOrder = 0;
     float sortY = 0.0f;
     bool hasShadow = true;
+    int roomIndex = -1; // Індекс кімнати з шару "rooms" (-1 якщо поза кімнатами)
+};
+
+struct RoomZone {
+    std::string name;
+    Rectangle bounds = { 0.0f, 0.0f, 0.0f, 0.0f };
 };
 
 struct InteractableObject {
     std::string fullId;       // Наприклад, "locker_1" або "key_room"
     std::string type;         // Наприклад, "locker", "safe", "terminal" (частина до першого '_')
     Rectangle bounds = { 0 }; // Зона спрацьовування перед об'єктом
-    bool isUsed = false;      // Прапорець стану (чи вже взаємодіяли)
+    bool isUsed = false;      // Прапоць стану (чи вже взаємодіяли)
     std::shared_ptr<Item> storedItem = nullptr; // Предмет всередині
 };
 
@@ -63,6 +69,7 @@ struct MapData {
     std::unordered_map<std::string, Rectangle> teleportTargets;
     std::vector<InteractableObject> interactables;
     std::vector<MapVisualObject> visualObjects;
+    std::vector<RoomZone> rooms;               // Прямокутники кімнат із шару "rooms"
 
     Vector2 playerSpawn = { 1944.0f, 2464.0f };
     std::vector<Vector2> guardSpawns;
@@ -79,11 +86,16 @@ public:
     bool Load(const std::string& mapPath, const std::string& defaultTilesetKey = "");
     void Unload();
 
-    // Рендеринг
-    void DrawBelowPlayer() const;
-    void DrawAbovePlayer() const;
+    // Визначення кімнати за світовою точкою або прямокутником
+    int GetRoomIndexAtPoint(Vector2 worldPos) const;
+    int GetRoomIndexAtRect(Rectangle rect) const;
+    const std::vector<RoomZone>& GetRooms() const { return data.rooms; }
+
+    // Рендеринг з відсіканням позакадрових тайлів та ізоляцією активної кімнати
+    void DrawBelowPlayer(Rectangle viewRect, int activeRoomIndex) const;
+    void DrawAbovePlayer(Rectangle viewRect, int activeRoomIndex) const;
     void DrawVisualObject(const MapVisualObject& obj) const;
-    void DrawDebug() const;
+    void DrawDebug(int activeRoomIndex = -1) const;
 
     // Ігрова логіка
     void DistributeLoot();
@@ -110,5 +122,5 @@ private:
     MapData data;
     std::string currentTriggerMessage = "";
 
-    void DrawSingleLayer(const std::vector<int>& layerData) const;
+    void DrawSingleLayer(const std::vector<int>& layerData, Rectangle viewRect, int activeRoomIndex) const;
 };

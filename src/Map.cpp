@@ -2,6 +2,8 @@
 #include "MapParser.h"
 #include "Logger.h"
 #include "Keys.h"
+#include <algorithm>
+#include <cmath>
 
 bool GameMap::Load(const std::string& mapPath, const std::string& defaultTilesetKey) {
     Unload();
@@ -13,20 +15,70 @@ void GameMap::Unload() {
     currentTriggerMessage = "";
 }
 
-void GameMap::DrawBelowPlayer() const {
+int GameMap::GetRoomIndexAtPoint(Vector2 worldPos) const {
+    for (size_t i = 0; i < data.rooms.size(); ++i) {
+        if (CheckCollisionPointRec(worldPos, data.rooms[i].bounds)) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+int GameMap::GetRoomIndexAtRect(Rectangle rect) const {
+    Vector2 center = { rect.x + rect.width * 0.5f, rect.y + rect.height * 0.5f };
+    int idx = GetRoomIndexAtPoint(center);
+    if (idx != -1) return idx;
+
+    for (size_t i = 0; i < data.rooms.size(); ++i) {
+        if (CheckCollisionRecs(rect, data.rooms[i].bounds)) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+void GameMap::DrawBelowPlayer(Rectangle viewRect, int activeRoomIndex) const {
     for (const auto& layerData : data.belowPlayerLayers) {
-        DrawSingleLayer(layerData);
+        DrawSingleLayer(layerData, viewRect, activeRoomIndex);
     }
 }
 
-void GameMap::DrawAbovePlayer() const {
+void GameMap::DrawAbovePlayer(Rectangle viewRect, int activeRoomIndex) const {
     for (const auto& layerData : data.abovePlayerLayers) {
-        DrawSingleLayer(layerData);
+        DrawSingleLayer(layerData, viewRect, activeRoomIndex);
     }
 }
 
-void GameMap::DrawSingleLayer(const std::vector<int>& layerData) const {
-    if (layerData.empty() || data.tilesets.empty()) return;
+void GameMap::DrawSingleLayer(const std::vector<int>& layerData, Rectangle viewRect, int activeRoomIndex) const {
+    if (layerData.empty() || data.tilesets.empty() || data.tileWidth <= 0 || data.tileHeight <= 0) return;
+
+    // 1. Відсікання тайлів за межами прямокутника видимості камери (Frustum Culling)
+    int startX = (std::max)(0, static_cast<int>(std::floor(viewRect.x / static_cast<float>(data.tileWidth))));
+    int startY = (std::max)(0, static_cast<int>(std::floor(viewRect.y / static_cast<float>(data.tileHeight))));
+    int endX = (std::min)(data.mapWidth - 1, static_cast<int>(std::floor((viewRect.x + viewRect.width) / static_cast<float>(data.tileWidth))));
+    int endY = (std::min)(data.mapHeight - 1, static_cast<int>(std::floor((viewRect.y + viewRect.height) / static_cast<float>(data.tileHeight))));
+
+    if (startX > endX || startY > endY) return;
+
+    // 2. Якщо на карті є шар кімнат і гравець знаходиться у конкретній кімнаті —
+    // додатково звужуємо цикл по тайлах до меж цієї кімнати
+    bool restrictToRoom = (!data.rooms.empty() && activeRoomIndex >= 0 && activeRoomIndex < static_cast<int>(data.rooms.size()));
+    Rectangle activeRoomBounds = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+    if (restrictToRoom) {
+        activeRoomBounds = data.rooms[activeRoomIndex].bounds;
+        int roomStartX = (std::max)(0, static_cast<int>(std::floor(activeRoomBounds.x / static_cast<float>(data.tileWidth))));
+        int roomStartY = (std::max)(0, static_cast<int>(std::floor(activeRoomBounds.y / static_cast<float>(data.tileHeight))));
+        int roomEndX = (std::min)(data.mapWidth - 1, static_cast<int>(std::floor((activeRoomBounds.x + activeRoomBounds.width - 0.01f) / static_cast<float>(data.tileWidth))));
+        int roomEndY = (std::min)(data.mapHeight - 1, static_cast<int>(std::floor((activeRoomBounds.y + activeRoomBounds.height - 0.01f) / static_cast<float>(data.tileHeight))));
+
+        startX = (std::max)(startX, roomStartX);
+        startY = (std::max)(startY, roomStartY);
+        endX = (std::min)(endX, roomEndX);
+        endY = (std::min)(endY, roomEndY);
+
+        if (startX > endX || startY > endY) return;
+    }
 
     constexpr uint32_t FLIPPED_HORIZONTALLY_FLAG = 0x80000000;
     constexpr uint32_t FLIPPED_VERTICALLY_FLAG = 0x40000000;
@@ -35,10 +87,23 @@ void GameMap::DrawSingleLayer(const std::vector<int>& layerData) const {
         FLIPPED_VERTICALLY_FLAG |
         FLIPPED_DIAGONALLY_FLAG);
 
-    for (int y = 0; y < data.mapHeight; ++y) {
-        for (int x = 0; x < data.mapWidth; ++x) {
+    for (int y = startY; y <= endY; ++y) {
+        float posY = static_cast<float>(y * data.tileHeight);
+        float tileCenterY = posY + static_cast<float>(data.tileHeight) * 0.5f;
+
+        for (int x = startX; x <= endX; ++x) {
+            float posX = static_cast<float>(x * data.tileWidth);
+
+            // Перевіряємо, щоб центр тайла точно належав активній кімнаті
+            if (restrictToRoom) {
+                float tileCenterX = posX + static_cast<float>(data.tileWidth) * 0.5f;
+                if (!CheckCollisionPointRec({ tileCenterX, tileCenterY }, activeRoomBounds)) {
+                    continue;
+                }
+            }
+
             int idx = x + y * data.mapWidth;
-            if (idx < 0 || idx >= (int)layerData.size()) continue;
+            if (idx < 0 || idx >= static_cast<int>(layerData.size())) continue;
 
             uint32_t rawGlobalTileId = static_cast<uint32_t>(layerData[idx]);
             if (rawGlobalTileId == 0) continue;
@@ -49,10 +114,10 @@ void GameMap::DrawSingleLayer(const std::vector<int>& layerData) const {
             const TilesetInfo* activeTileset = nullptr;
             int localTileId = 0;
 
-            for (int i = (int)data.tilesets.size() - 1; i >= 0; --i) {
-                if (globalTileId >= (uint32_t)data.tilesets[i].firstgid) {
+            for (int i = static_cast<int>(data.tilesets.size()) - 1; i >= 0; --i) {
+                if (globalTileId >= static_cast<uint32_t>(data.tilesets[i].firstgid)) {
                     activeTileset = &data.tilesets[i];
-                    localTileId = globalTileId - data.tilesets[i].firstgid;
+                    localTileId = static_cast<int>(globalTileId) - data.tilesets[i].firstgid;
                     break;
                 }
             }
@@ -65,10 +130,12 @@ void GameMap::DrawSingleLayer(const std::vector<int>& layerData) const {
             int tsX = (localTileId % tsCols) * activeTileset->tileWidth;
             int tsY = (localTileId / tsCols) * activeTileset->tileHeight;
 
-            Rectangle srcRec = { (float)tsX, (float)tsY, (float)activeTileset->tileWidth, (float)activeTileset->tileHeight };
-
-            float posX = (float)(x * data.tileWidth);
-            float posY = (float)(y * data.tileHeight);
+            Rectangle srcRec = {
+                static_cast<float>(tsX),
+                static_cast<float>(tsY),
+                static_cast<float>(activeTileset->tileWidth),
+                static_cast<float>(activeTileset->tileHeight)
+            };
 
             bool flipH = (rawGlobalTileId & FLIPPED_HORIZONTALLY_FLAG) != 0;
             bool flipV = (rawGlobalTileId & FLIPPED_VERTICALLY_FLAG) != 0;
@@ -98,14 +165,14 @@ void GameMap::DrawSingleLayer(const std::vector<int>& layerData) const {
                 if (outFlipV) srcRec.height = -srcRec.height;
 
                 Rectangle destRec = {
-                    posX + (float)data.tileWidth * 0.5f,
-                    posY + (float)data.tileHeight * 0.5f,
-                    (float)activeTileset->tileWidth,
-                    (float)activeTileset->tileHeight
+                    posX + static_cast<float>(data.tileWidth) * 0.5f,
+                    posY + static_cast<float>(data.tileHeight) * 0.5f,
+                    static_cast<float>(activeTileset->tileWidth),
+                    static_cast<float>(activeTileset->tileHeight)
                 };
                 Vector2 origin = {
-                    (float)activeTileset->tileWidth * 0.5f,
-                    (float)activeTileset->tileHeight * 0.5f
+                    static_cast<float>(activeTileset->tileWidth) * 0.5f,
+                    static_cast<float>(activeTileset->tileHeight) * 0.5f
                 };
 
                 DrawTexturePro(activeTileset->texture, srcRec, destRec, origin, rotation, WHITE);
@@ -125,8 +192,8 @@ void GameMap::DrawVisualObject(const MapVisualObject& obj) const {
 
     const TilesetInfo* activeTs = nullptr;
     int localId = 0;
-    for (int i = (int)data.tilesets.size() - 1; i >= 0; --i) {
-        if (gid >= (uint32_t)data.tilesets[i].firstgid) {
+    for (int i = static_cast<int>(data.tilesets.size()) - 1; i >= 0; --i) {
+        if (gid >= static_cast<uint32_t>(data.tilesets[i].firstgid)) {
             activeTs = &data.tilesets[i];
             localId = gid - data.tilesets[i].firstgid;
             break;
@@ -141,17 +208,17 @@ void GameMap::DrawVisualObject(const MapVisualObject& obj) const {
         auto it = activeTs->individualTextures.find(localId);
         if (it == activeTs->individualTextures.end() || it->second.id == 0) return;
         tex = it->second;
-        srcRec = { 0.0f, 0.0f, (float)tex.width, (float)tex.height };
+        srcRec = { 0.0f, 0.0f, static_cast<float>(tex.width), static_cast<float>(tex.height) };
     }
     else if (activeTs->texture.id != 0) {
         tex = activeTs->texture;
         int tsCols = tex.width / activeTs->tileWidth;
         if (tsCols <= 0) return;
         srcRec = {
-            (float)((localId % tsCols) * activeTs->tileWidth),
-            (float)((localId / tsCols) * activeTs->tileHeight),
-            (float)activeTs->tileWidth,
-            (float)activeTs->tileHeight
+            static_cast<float>((localId % tsCols) * activeTs->tileWidth),
+            static_cast<float>((localId / tsCols) * activeTs->tileHeight),
+            static_cast<float>(activeTs->tileWidth),
+            static_cast<float>(activeTs->tileHeight)
         };
     }
     else {
@@ -195,7 +262,18 @@ void GameMap::DrawVisualObject(const MapVisualObject& obj) const {
     DrawTexturePro(tex, srcRec, destRec, origin, rotation, WHITE);
 }
 
-void GameMap::DrawDebug() const {
+void GameMap::DrawDebug(int activeRoomIndex) const {
+    // 0. Межі кімнат із шару "rooms" — бірюзовий контур
+    for (size_t i = 0; i < data.rooms.size(); ++i) {
+        bool isCurrent = (static_cast<int>(i) == activeRoomIndex);
+        Color roomCol = isCurrent ? Color{ 0, 235, 210, 255 } : Color{ 70, 130, 150, 180 };
+        DrawRectangleLinesEx(data.rooms[i].bounds, isCurrent ? 2.5f : 1.2f, roomCol);
+        const char* roomLabel = isCurrent
+            ? TextFormat("ROOM: %s [ACTIVE]", data.rooms[i].name.c_str())
+            : TextFormat("ROOM: %s", data.rooms[i].name.c_str());
+        DrawText(roomLabel, static_cast<int>(data.rooms[i].bounds.x) + 6, static_cast<int>(data.rooms[i].bounds.y) + 6, 12, roomCol);
+    }
+
     // 1. Ручні колізії з окремого шару — темніший червоний (MAROON)
     for (const auto& rect : data.collisionRects) {
         DrawRectangleRec(rect, ColorAlpha(MAROON, 0.45f));
@@ -213,7 +291,7 @@ void GameMap::DrawDebug() const {
         DrawRectangleRec(data.triggers[i], ColorAlpha(GREEN, 0.35f));
         DrawRectangleLinesEx(data.triggers[i], 1.0f, GREEN);
         if (i < data.triggerNames.size()) {
-            DrawText(data.triggerNames[i].c_str(), (int)data.triggers[i].x, (int)data.triggers[i].y - 12, 10, GREEN);
+            DrawText(data.triggerNames[i].c_str(), static_cast<int>(data.triggers[i].x), static_cast<int>(data.triggers[i].y) - 12, 10, GREEN);
         }
     }
 
@@ -221,7 +299,7 @@ void GameMap::DrawDebug() const {
     for (const auto& [name, rect] : data.teleportTargets) {
         DrawRectangleRec(rect, ColorAlpha(SKYBLUE, 0.45f));
         DrawRectangleLinesEx(rect, 1.0f, SKYBLUE);
-        DrawText(name.c_str(), (int)rect.x, (int)rect.y - 12, 10, SKYBLUE);
+        DrawText(name.c_str(), static_cast<int>(rect.x), static_cast<int>(rect.y) - 12, 10, SKYBLUE);
     }
 
     // 4. Інтерактивні об'єкти (_i) — напівпрозорий рожевий (PINK)
@@ -232,7 +310,7 @@ void GameMap::DrawDebug() const {
         DrawRectangleLinesEx(obj.bounds, 1.5f, borderCol);
 
         const char* label = TextFormat("%s [%s]%s", obj.fullId.c_str(), obj.type.c_str(), obj.isUsed ? " (USED)" : "");
-        DrawText(label, (int)obj.bounds.x, (int)obj.bounds.y - 12, 10, borderCol);
+        DrawText(label, static_cast<int>(obj.bounds.x), static_cast<int>(obj.bounds.y) - 12, 10, borderCol);
     }
 
     // 5. Спавни об'єктів (точки) — напівпрозорий фіолетовий
@@ -249,7 +327,7 @@ void GameMap::DrawDebug() const {
         Vector2 pt = data.guardPatrolPoints[i];
         DrawPoly(pt, 4, 8.0f, 0.0f, ColorAlpha(ORANGE, 0.75f));
         DrawPolyLinesEx(pt, 4, 8.0f, 0.0f, 1.5f, GOLD);
-        DrawText(TextFormat("P%d", (int)i), (int)pt.x + 10, (int)pt.y - 6, 12, GOLD);
+        DrawText(TextFormat("P%d", static_cast<int>(i)), static_cast<int>(pt.x) + 10, static_cast<int>(pt.y) - 6, 12, GOLD);
 
         if (i + 1 < data.guardPatrolPoints.size()) {
             DrawLineEx(pt, data.guardPatrolPoints[i + 1], 1.2f, ColorAlpha(ORANGE, 0.45f));
@@ -306,7 +384,7 @@ void GameMap::DistributeLoot() {
 
     // 1. Ключ від кімнати охоронця — у зовнішніх шафках
     if (!outerLockers.empty()) {
-        int idx = GetRandomValue(0, (int)outerLockers.size() - 1);
+        int idx = GetRandomValue(0, static_cast<int>(outerLockers.size()) - 1);
         InteractableObject* chosen = outerLockers[idx];
         Vector2 pos = { chosen->bounds.x + chosen->bounds.width * 0.5f, chosen->bounds.y + chosen->bounds.height * 0.5f };
         chosen->storedItem = std::make_shared<RoomKey>(pos);
@@ -318,7 +396,7 @@ void GameMap::DistributeLoot() {
 
     // 2. Картка від сейфа — у шафках кімнати охоронця (lock_8 або lock_9)
     if (!guardRoomLockers.empty()) {
-        int idx = GetRandomValue(0, (int)guardRoomLockers.size() - 1);
+        int idx = GetRandomValue(0, static_cast<int>(guardRoomLockers.size()) - 1);
         InteractableObject* chosen = guardRoomLockers[idx];
         Vector2 pos = { chosen->bounds.x + chosen->bounds.width * 0.5f, chosen->bounds.y + chosen->bounds.height * 0.5f };
         chosen->storedItem = std::make_shared<SafeKeyCard>(pos);

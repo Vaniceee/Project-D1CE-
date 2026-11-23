@@ -31,8 +31,8 @@ namespace {
 
         int fontSize = isWide ? 11 : 12;
         int tw = MeasureText(label, fontSize);
-        int tx = (int)roundf(x + (w - (float)tw) * 0.5f);
-        int ty = (int)roundf(y + (h - (float)fontSize) * 0.5f);
+        int tx = static_cast<int>(roundf(x + (w - static_cast<float>(tw)) * 0.5f));
+        int ty = static_cast<int>(roundf(y + (h - static_cast<float>(fontSize)) * 0.5f));
 
         DrawText(label, tx + 1, ty + 1, fontSize, ColorAlpha(BLACK, 0.85f * alpha));
         DrawText(label, tx, ty, fontSize, ColorAlpha(Color{ 255, 235, 165, 255 }, 0.96f * alpha));
@@ -41,16 +41,30 @@ namespace {
     void DrawFloorHintCaption(float centerX, float y, const char* text, float alpha) {
         int fontSize = 11;
         int tw = MeasureText(text, fontSize);
-        float textX = centerX - (float)tw * 0.5f;
+        float textX = centerX - static_cast<float>(tw) * 0.5f;
 
         float lineSpan = 13.0f;
         Color decoCol = ColorAlpha(GOLD, 0.52f * alpha);
         DrawLineEx({ textX - 6.0f - lineSpan, y + fontSize * 0.5f }, { textX - 6.0f, y + fontSize * 0.5f }, 1.0f, decoCol);
-        DrawLineEx({ textX + (float)tw + 6.0f, y + fontSize * 0.5f }, { textX + (float)tw + 6.0f + lineSpan, y + fontSize * 0.5f }, 1.0f, decoCol);
+        DrawLineEx({ textX + static_cast<float>(tw) + 6.0f, y + fontSize * 0.5f }, { textX + static_cast<float>(tw) + 6.0f + lineSpan, y + fontSize * 0.5f }, 1.0f, decoCol);
 
-        DrawText(text, (int)roundf(textX) + 1, (int)roundf(y) + 1, fontSize, ColorAlpha(BLACK, 0.85f * alpha));
-        DrawText(text, (int)roundf(textX), (int)roundf(y), fontSize, ColorAlpha(Color{ 245, 222, 148, 255 }, 0.95f * alpha));
+        DrawText(text, static_cast<int>(roundf(textX)) + 1, static_cast<int>(roundf(y)) + 1, fontSize, ColorAlpha(BLACK, 0.85f * alpha));
+        DrawText(text, static_cast<int>(roundf(textX)), static_cast<int>(roundf(y)), fontSize, ColorAlpha(Color{ 245, 222, 148, 255 }, 0.95f * alpha));
     }
+}
+
+Rectangle RenderSystem::ComputeCameraWorldViewRect(const Camera2D& camera, int virtualWidth, int virtualHeight, float padding) {
+    Vector2 topLeft = GetScreenToWorld2D({ 0.0f, 0.0f }, camera);
+    Vector2 topRight = GetScreenToWorld2D({ static_cast<float>(virtualWidth), 0.0f }, camera);
+    Vector2 bottomLeft = GetScreenToWorld2D({ 0.0f, static_cast<float>(virtualHeight) }, camera);
+    Vector2 bottomRight = GetScreenToWorld2D({ static_cast<float>(virtualWidth), static_cast<float>(virtualHeight) }, camera);
+
+    float minX = std::min({ topLeft.x, topRight.x, bottomLeft.x, bottomRight.x }) - padding;
+    float maxX = std::max({ topLeft.x, topRight.x, bottomLeft.x, bottomRight.x }) + padding;
+    float minY = std::min({ topLeft.y, topRight.y, bottomLeft.y, bottomRight.y }) - padding;
+    float maxY = std::max({ topLeft.y, topRight.y, bottomLeft.y, bottomRight.y }) + padding;
+
+    return { minX, minY, maxX - minX, maxY - minY };
 }
 
 void RenderSystem::DrawFloorTutorialHint(const FloorTutorialHint& hint) const {
@@ -112,13 +126,14 @@ void RenderSystem::DrawFloorTutorialHint(const FloorTutorialHint& hint) const {
     }
 }
 
-void RenderSystem::DrawObjectShadows(const std::vector<MapVisualObject>& mapObjects) const {
-    for (const auto& obj : mapObjects) {
+void RenderSystem::DrawObjectShadows(const std::vector<const MapVisualObject*>& visibleObjects) const {
+    for (const MapVisualObject* objPtr : visibleObjects) {
+        const MapVisualObject& obj = *objPtr;
         if (!obj.hasShadow) continue;
 
         // У Tiled obj.x та obj.y — це нижній лівий кут об'єкта
-        int shadowCenterX = (int)roundf(obj.x + obj.width * 0.5f);
-        int shadowCenterY = (int)roundf(obj.y - 3.0f);
+        int shadowCenterX = static_cast<int>(roundf(obj.x + obj.width * 0.5f));
+        int shadowCenterY = static_cast<int>(roundf(obj.y - 3.0f));
 
         // Видовжений горизонтальний еліпс під основою об'єкта
         float shadowRadiusX = obj.width * 0.48f;
@@ -130,26 +145,67 @@ void RenderSystem::DrawObjectShadows(const std::vector<MapVisualObject>& mapObje
     }
 }
 
-void RenderSystem::RenderWorld(const GameMap& gameMap, Player* player, Guard* guard, const FloorTutorialHint* floorHint) {
-    // 1. Шари під гравцем (підлога, килими)
-    gameMap.DrawBelowPlayer();
+void RenderSystem::RenderWorld(
+    const GameMap& gameMap,
+    Player* player,
+    Guard* guard,
+    const Camera2D& camera,
+    int virtualWidth,
+    int virtualHeight,
+    const FloorTutorialHint* floorHint)
+{
+    Rectangle viewRect = ComputeCameraWorldViewRect(camera, virtualWidth, virtualHeight, 64.0f);
 
-    // 1.5 Підказки керування на підлозі
+    // Визначаємо поточну кімнату гравця за шаром "rooms"
+    int activeRoomIndex = -1;
+    if (player) {
+        activeRoomIndex = gameMap.GetRoomIndexAtRect(player->GetFootCollider());
+    }
+    else {
+        activeRoomIndex = gameMap.GetRoomIndexAtPoint(camera.target);
+    }
+    lastActiveRoomIndex = activeRoomIndex;
+    bool hasRooms = !gameMap.GetRooms().empty();
+
+    // 1. Шари під гравцем (тільки видимі в кадрі тайли активної кімнати)
+    gameMap.DrawBelowPlayer(viewRect, activeRoomIndex);
+
+    // 1.5 Підказки керування на підлозі (тільки якщо потрапляють у кадр)
     if (floorHint != nullptr) {
-        DrawFloorTutorialHint(*floorHint);
+        Rectangle hintRect = { floorHint->anchorPos.x - 140.0f, floorHint->anchorPos.y - 160.0f, 280.0f, 170.0f };
+        if (CheckCollisionRecs(viewRect, hintRect)) {
+            DrawFloorTutorialHint(*floorHint);
+        }
     }
 
-    // 1.8 Контактні тіні об'єктів на підлозі
+    // 1.8 Фільтрація візуальних об'єктів за кімнатою та видимістю камери
     const auto& mapObjects = gameMap.GetVisualObjects();
-    DrawObjectShadows(mapObjects);
-
-    // 2. Збір об'єктів для сортування
-    renderQueue.clear();
-    renderQueue.reserve(mapObjects.size() + 2);
+    visibleObjectsCache.clear();
+    visibleObjectsCache.reserve(mapObjects.size());
 
     for (const auto& obj : mapObjects) {
-        int order = (obj.category == VisualCategory::FloorDeco) ? -1 : obj.layerOrder;
-        renderQueue.push_back({ obj.sortY, order, RenderItem::Type::MAP_OBJECT, &obj });
+        if (hasRooms && activeRoomIndex != -1 && obj.roomIndex != activeRoomIndex) {
+            continue;
+        }
+
+        Rectangle objBounds = { obj.x, obj.y - obj.height, obj.width, obj.height };
+        if (!CheckCollisionRecs(viewRect, objBounds)) {
+            continue;
+        }
+
+        visibleObjectsCache.push_back(&obj);
+    }
+
+    // Контактні тіні лише для видимих об'єктів у активній кімнаті
+    DrawObjectShadows(visibleObjectsCache);
+
+    // 2. Збір об'єктів для Y-сортування
+    renderQueue.clear();
+    renderQueue.reserve(visibleObjectsCache.size() + 2);
+
+    for (const MapVisualObject* objPtr : visibleObjectsCache) {
+        int order = (objPtr->category == VisualCategory::FloorDeco) ? -1 : objPtr->layerOrder;
+        renderQueue.push_back({ objPtr->sortY, order, RenderItem::Type::MAP_OBJECT, objPtr });
     }
 
     if (player) {
@@ -159,12 +215,15 @@ void RenderSystem::RenderWorld(const GameMap& gameMap, Player* player, Guard* gu
 
     if (guard) {
         Rectangle guardFoot = guard->GetFootCollider();
-        renderQueue.push_back({ guardFoot.y + guardFoot.height, 0, RenderItem::Type::GUARD, nullptr });
+        int guardRoom = gameMap.GetRoomIndexAtRect(guardFoot);
+        bool guardInActiveRoom = (!hasRooms || activeRoomIndex == -1 || guardRoom == activeRoomIndex);
+
+        if (guardInActiveRoom && CheckCollisionRecs(viewRect, guard->GetCollider())) {
+            renderQueue.push_back({ guardFoot.y + guardFoot.height, 0, RenderItem::Type::GUARD, nullptr });
+        }
     }
 
-    // 3. Сортування:
-    // - Підлогові об'єкти (FloorDeco, order < 0) завжди під ногами.
-    // - Решта сортується по sortY (при збігу — за природним порядком шарів у Tiled).
+    // 3. Сортування
     std::sort(renderQueue.begin(), renderQueue.end(), [](const RenderItem& a, const RenderItem& b) {
         bool aIsFloor = (a.order < 0);
         bool bIsFloor = (b.order < 0);
@@ -193,6 +252,6 @@ void RenderSystem::RenderWorld(const GameMap& gameMap, Player* player, Guard* gu
         }
     }
 
-    // 5. Шари над гравцем (дах, верхні частини стін)
-    gameMap.DrawAbovePlayer();
+    // 5. Шари над гравцем (тільки видимі в кадрі тайли активної кімнати)
+    gameMap.DrawAbovePlayer(viewRect, activeRoomIndex);
 }

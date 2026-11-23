@@ -582,6 +582,25 @@ namespace {
         }
     }
 
+    void ParseRoomObjects(const JsonValue::Array& objs, MapData& outData) {
+        for (const auto& obj : objs) {
+            if (!obj.AsObject()) continue;
+            float w = obj.GetFloat("width");
+            float h = obj.GetFloat("height");
+            if (w <= 0.0f || h <= 0.0f) continue;
+
+            RoomZone room;
+            room.name = obj.GetString("name", "room_" + std::to_string(outData.rooms.size()));
+            room.bounds = {
+                obj.GetFloat("x"),
+                obj.GetFloat("y"),
+                w,
+                h
+            };
+            outData.rooms.push_back(std::move(room));
+        }
+    }
+
     void ParseVisualObjects(const JsonValue::Array& objs, VisualCategory category, int layerOrder, int& globalSubOrder, MapData& outData) {
         for (const auto& obj : objs) {
             if (!obj.AsObject()) continue;
@@ -731,10 +750,43 @@ namespace {
                 {
                     ParseSpawnObjects(*objsArr, outData);
                 }
+                else if (lowerName.find("room") != std::string::npos)
+                {
+                    ParseRoomObjects(*objsArr, outData);
+                }
                 else if (isVisible) {
                     VisualCategory category = DetectVisualCategory(lowerName);
                     int order = (category == VisualCategory::FloorDeco) ? -1 : visualLayerIndex++;
                     ParseVisualObjects(*objsArr, category, order, globalSubOrder, outData);
+                }
+            }
+        }
+    }
+
+    void AssignRoomsToVisualObjects(MapData& outData) {
+        if (outData.rooms.empty()) return;
+
+        for (auto& obj : outData.visualObjects) {
+            Vector2 anchor = {
+                obj.x + obj.width * 0.5f,
+                obj.y - 2.0f
+            };
+
+            obj.roomIndex = -1;
+            for (size_t i = 0; i < outData.rooms.size(); ++i) {
+                if (CheckCollisionPointRec(anchor, outData.rooms[i].bounds)) {
+                    obj.roomIndex = static_cast<int>(i);
+                    break;
+                }
+            }
+
+            if (obj.roomIndex == -1) {
+                Rectangle objRect = { obj.x, obj.y - obj.height, obj.width, obj.height };
+                for (size_t i = 0; i < outData.rooms.size(); ++i) {
+                    if (CheckCollisionRecs(objRect, outData.rooms[i].bounds)) {
+                        obj.roomIndex = static_cast<int>(i);
+                        break;
+                    }
                 }
             }
         }
@@ -845,15 +897,17 @@ bool MapParser::Parse(const std::string& mapPath, const std::string& defaultTile
         ParseLayersRecursive(*layersArr, visualLayerIndex, globalSubOrder, outData);
     }
 
+    AssignRoomsToVisualObjects(outData);
     ApplySupportSorting(outData);
 
-    GAME_INFO("MAP_PARSER", "Map parsed: %s (Below layers: %zu, Above layers: %zu, Manual cols: %zu, Auto cols: %zu, Visuals: %zu, Patrol pts: %zu)",
+    GAME_INFO("MAP_PARSER", "Map parsed: %s (Below: %zu, Above: %zu, Manual cols: %zu, Auto cols: %zu, Visuals: %zu, Rooms: %zu, Patrol pts: %zu)",
         mapPath.c_str(),
         outData.belowPlayerLayers.size(),
         outData.abovePlayerLayers.size(),
         outData.collisionRects.size(),
         outData.autoCollisionRects.size(),
         outData.visualObjects.size(),
+        outData.rooms.size(),
         outData.guardPatrolPoints.size());
 
     return true;

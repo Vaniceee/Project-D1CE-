@@ -21,11 +21,25 @@ struct RenderItem {
 
 class RenderSystem {
 public:
-    // Малює весь ігровий світ у межах активної 2D-камери
-    void RenderWorld(const GameMap& gameMap, Player* player, Guard* guard, const FloorTutorialHint* floorHint = nullptr);
+    // Малює весь ігровий світ у межах активної 2D-камери з відсіканням тайлів та ізоляцією кімнат
+    void RenderWorld(
+        const GameMap& gameMap,
+        Player* player,
+        Guard* guard,
+        const Camera2D& camera,
+        int virtualWidth,
+        int virtualHeight,
+        const FloorTutorialHint* floorHint = nullptr
+    );
+
+    int GetLastActiveRoomIndex() const { return lastActiveRoomIndex; }
 
 private:
     std::vector<RenderItem> renderQueue;
+    std::vector<const MapVisualObject*> visibleObjectsCache;
+    int lastActiveRoomIndex = -1;
+
+    static Rectangle ComputeCameraWorldViewRect(const Camera2D& camera, int virtualWidth, int virtualHeight, float padding = 64.0f);
     void DrawFloorTutorialHint(const FloorTutorialHint& hint) const;
-    void DrawObjectShadows(const std::vector<MapVisualObject>& mapObjects) const;
+    void DrawObjectShadows(const std::vector<const MapVisualObject*>& visibleObjects) const;
 };
