@@ -46,4 +46,12 @@ namespace Config {
 	constexpr const char* PATH_PNG_WALLS_1 = "assets/map/png/tiles/walls.png";
 	constexpr const char* PATH_PNG_WALLS_2 = "assets/map/png/tiles/walls1.png";
 
+	// для катсцени
+	constexpr const char* CUTSCENE_S1_BASE = "assets/cutscene/scene1a.png";
+	constexpr const char* CUTSCENE_S1_OVERLAY = "assets/cutscene/scene1b.png";
+	constexpr const char* CUTSCENE_S1_AUDIO = "assets/cutscene/Scene1a-b.wav";
+
+	constexpr const char* CUTSCENE_RICKROLL_GIF = "assets/cutscene/rickroll.gif";
+	constexpr const char* CUTSCENE_RICKROLL_WAV = "assets/cutscene/rickroll.wav";
+
 }

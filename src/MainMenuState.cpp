@@ -1,5 +1,6 @@
 #include "MainMenuState.h"
 #include "GameplayState.h"
+#include "CutsceneState.h"
 #include "GameManager.h"
 #include "Logger.h"
 #include "CustomCursor.h"
@@ -184,7 +185,7 @@ void MainMenuState::Update() {
         }
 
         if (transitionTimer >= transitionDuration) {
-            GameManager::Instance().ChangeState(new GameplayState());
+            GameManager::Instance().ChangeState(new CutsceneState());
             return;
         }
     }
