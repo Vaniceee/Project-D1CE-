@@ -152,6 +152,7 @@ void GameplayState::Init() {
 
     AssetManager& am = AssetManager::Instance();
 
+    am.LoadTexture("guard_spritesheet", Config::PATH_PNG_GUARD_SPRITESHEET);
     am.LoadTexture("player_spritesheet", Config::PATH_PNG_PLAYER_SPRITESHEET);
     am.LoadTexture("floor", Config::PATH_PNG_FLOOR);
     am.LoadTexture("rugs", Config::PATH_PNG_RUGS);
@@ -208,7 +209,7 @@ void GameplayState::Init() {
 
     const auto& guardSpawns = gameMap.GetGuardSpawns();
     Vector2 guardPos = !guardSpawns.empty() ? guardSpawns[0] : Vector2{ 2200.0f, 2464.0f };
-    guard = std::make_unique<Guard>(guardPos, 118.0f);
+    guard = std::make_unique<Guard>(guardPos, 120.0f, 32.0f, 64.0f, am.GetTexture("guard_spritesheet"), 1.45f);
     guard->InitPathfinding(gameMap);
     guard->SetPatrolWaypoints(gameMap.GetGuardPatrolPoints());
 

@@ -17,8 +17,10 @@ namespace {
     }
 }
 
-Guard::Guard(Vector2 startPos, float startSpeed, float width, float height)
-    : Entity(startPos, startSpeed, width, height) {
+Guard::Guard(Vector2 startPos, float startSpeed, float width, float height, Texture2D tex, float guardScale)
+    : Entity(startPos, startSpeed, width, height), texture(tex), scale(guardScale) {
+    frameWidth = width;
+    frameHeight = height;
     RecalculateFootCollider();
     spawnFootPos = GetFootCenter();
 }
@@ -42,6 +44,10 @@ void Guard::InitPathfinding(const GameMap& gameMap) {
     spawnFootPos = GetFootCenter();
 
     AssetManager& am = AssetManager::Instance();
+    if (texture.id == 0) {
+        texture = am.GetTexture("guard_spritesheet");
+    }
+
     chaseMusic = am.GetMusic("guard_chase");
     hasChaseMusic = (chaseMusic.stream.buffer != nullptr);
     if (hasChaseMusic) {
@@ -127,7 +133,6 @@ void Guard::InitPathfinding(const GameMap& gameMap) {
         unsigned int channels = breathSrc.channels;
         unsigned int sampleRate = breathSrc.sampleRate;
 
-        // Зводимо у моно-буфер
         std::vector<float> monoSamples(totalFrames, 0.0f);
         for (unsigned int f = 0; f < totalFrames; ++f) {
             float sum = 0.0f;
@@ -138,7 +143,6 @@ void Guard::InitPathfinding(const GameMap& gameMap) {
         }
         UnloadWaveSamples(rawSamples);
 
-        
         unsigned int fadeFrames = (unsigned int)(sampleRate * 1.5f);
         if (fadeFrames > totalFrames / 3) {
             fadeFrames = totalFrames / 3;
@@ -167,7 +171,6 @@ void Guard::InitPathfinding(const GameMap& gameMap) {
                 float val = monoSamples[f];
                 if (f < fadeFrames) {
                     float t = (float)f / (float)fadeFrames;
-                    // Equal-power крива (sin/cos), щоб на стику не просідала гучність
                     float fadeIn = sinf(t * PI * 0.5f);
                     float fadeOut = cosf(t * PI * 0.5f);
                     float tailVal = monoSamples[loopFrames + f];
@@ -284,7 +287,6 @@ void Guard::StopAudio() {
     isChaseAudioEngaged = false;
     chaseIntroTimer = 0.0f;
     chaseAudioSustainTimer = 0.0f;
-    footstepTimer = 0.0f;
 }
 
 void Guard::UpdateBreathAudio(Vector2 guardCenter, Vector2 playerCenter, const GameMap& gameMap, float dt) {
@@ -295,7 +297,6 @@ void Guard::UpdateBreathAudio(Vector2 guardCenter, Vector2 playerCenter, const G
 
     if (!isTeleporting && dist < maxBreathHearDistance) {
         float normDist = Clamp(dist / maxBreathHearDistance, 0.0f, 1.0f);
-        // Чим ближче НПС, тим виразніше чути важке дихання
         float distAttenuation = powf(1.0f - normDist, 1.35f);
         bool hasLOS = HasClearLineOfSight(guardCenter, playerCenter, gameMap);
         float wallFactor = hasLOS ? 1.0f : 0.58f;
@@ -315,7 +316,6 @@ void Guard::UpdateBreathAudio(Vector2 guardCenter, Vector2 playerCenter, const G
     currentBreathVolume = Lerp(currentBreathVolume, targetVolume, blendAlpha);
 
     if (currentBreathVolume > 0.004f) {
-        // Тримаємо обидва канали синхронно зацикленими
         if (!IsSoundPlaying(breathSoundLeft)) {
             PlaySound(breathSoundLeft);
         }
@@ -323,7 +323,6 @@ void Guard::UpdateBreathAudio(Vector2 guardCenter, Vector2 playerCenter, const G
             PlaySound(breathSoundRight);
         }
 
-        // Прискорюємо ритм дихання у погоні / пошуку
         float targetPitch = 1.0f;
         if (currentState == GuardState::CHASE) targetPitch = 1.18f;
         else if (currentState == GuardState::INVESTIGATE) targetPitch = 1.08f;
@@ -348,25 +347,8 @@ void Guard::UpdateBreathAudio(Vector2 guardCenter, Vector2 playerCenter, const G
     }
 }
 
-void Guard::UpdateFootstepAudio(Vector2 guardCenter, Vector2 playerCenter, bool movedThisFrame, const GameMap& gameMap, float dt) {
-    if (stepSoundCount == 0 || isTeleporting || !movedThisFrame) {
-        if (!movedThisFrame && footstepTimer > 0.14f) {
-            footstepTimer = 0.14f;
-        }
-        return;
-    }
-
-    footstepTimer -= dt;
-    if (footstepTimer > 0.0f) return;
-
-    float stepInterval = 0.64f;
-    if (currentState == GuardState::CHASE) {
-        stepInterval = 0.34f;
-    }
-    else if (currentState == GuardState::INVESTIGATE) {
-        stepInterval = 0.48f;
-    }
-    footstepTimer = stepInterval;
+void Guard::PlayFootstepAudio(Vector2 guardCenter, Vector2 playerCenter, const GameMap& gameMap) {
+    if (stepSoundCount == 0 || isTeleporting) return;
 
     float dist = Vector2Distance(guardCenter, playerCenter);
     if (dist > maxFootstepHearDistance) return;
@@ -492,14 +474,21 @@ void Guard::UpdateChaseAudio(float distToPlayer, float dt) {
 }
 
 void Guard::RecalculateFootCollider() {
-    float scaledWidth = collider.width * scale;
-    float scaledHeight = collider.height * scale;
+    float scaledWidth = frameWidth * scale;
+    float scaledHeight = frameHeight * scale;
 
-    footBoxWidth = scaledWidth * 0.6f;
-    footBoxHeight = scaledHeight * 0.25f;
+    footBoxWidth = scaledWidth * 0.4f;
+    footBoxHeight = scaledHeight * 0.15f;
 
     footOffsetX = (scaledWidth - footBoxWidth) * 0.5f;
     footOffsetY = scaledHeight - footBoxHeight;
+
+    collider = { position.x + footOffsetX, position.y + footOffsetY, footBoxWidth, footBoxHeight };
+}
+
+void Guard::SetScale(float newScale) {
+    scale = newScale;
+    RecalculateFootCollider();
 }
 
 Rectangle Guard::GetFootCollider() const {
@@ -513,6 +502,22 @@ Vector2 Guard::GetFootCenter() const {
 
 float Guard::GetActiveFovAngle() const {
     return (currentState == GuardState::CHASE) ? fovChaseAngleDeg : fovPatrolAngleDeg;
+}
+
+PlayerDirection Guard::GetFacingDirection() const {
+    float deg = fmodf(facingAngle * RAD2DEG, 360.0f);
+    if (deg < 0.0f) deg += 360.0f;
+
+    if (deg >= 45.0f && deg < 135.0f) {
+        return PlayerDirection::Down;
+    }
+    if (deg >= 135.0f && deg < 225.0f) {
+        return PlayerDirection::Left;
+    }
+    if (deg >= 225.0f && deg < 315.0f) {
+        return PlayerDirection::Up;
+    }
+    return PlayerDirection::Right;
 }
 
 void Guard::OnPlayerTeleported(Vector2 enteredTriggerCenter) {
@@ -753,6 +758,7 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
     Vector2 playerFootCenter = { playerFoot.x + playerFoot.width / 2.0f, playerFoot.y + playerFoot.height / 2.0f };
 
     if (isTeleporting) {
+        isMovingAnim = false;
         teleportTimer -= dt;
         UpdateBreathAudio(GetFootCenter(), playerFootCenter, gameMap, dt);
         UpdateChaseAudio(9999.0f, dt);
@@ -847,9 +853,35 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
         break;
     }
 
-    bool movedThisFrame = (Vector2Distance(posBeforeMove, position) > 0.08f);
+    isMovingAnim = (Vector2Distance(posBeforeMove, position) > 0.08f);
     Vector2 updatedGuardCenter = GetFootCenter();
     float updatedDistToPlayer = Vector2Distance(updatedGuardCenter, playerFootCenter);
+
+    // --- ОНОВЛЕННЯ АНІМАЦІЇ ТА СИНХРОНІЗАЦІЯ КРОКІВ ІЗ КАДРАМИ (як у Player) ---
+    if (isMovingAnim) {
+        if (currentState == GuardState::CHASE) frameSpeed = 0.075f;
+        else if (currentState == GuardState::INVESTIGATE) frameSpeed = 0.115f;
+        else frameSpeed = 0.15f;
+
+        animTimer += dt;
+        if (animTimer >= frameSpeed) {
+            animTimer = 0.0f;
+            int prevFrame = currentFrame;
+            currentFrame = (currentFrame + 1) % totalFrames;
+
+            if ((currentFrame == 2 || currentFrame == 6) && prevFrame != currentFrame) {
+                PlayFootstepAudio(updatedGuardCenter, playerFootCenter, gameMap);
+            }
+        }
+    }
+    else {
+        frameSpeed = 0.16f;
+        animTimer += dt;
+        if (animTimer >= frameSpeed) {
+            animTimer = 0.0f;
+            currentFrame = (currentFrame + 1) % totalFrames;
+        }
+    }
 
     Vector2 newGuardPos;
     if (teleportCooldown <= 0.0f && gameMap.TryGetTeleportDestination(GetFootCollider(), position, newGuardPos)) {
@@ -871,7 +903,6 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
     }
 
     UpdateBreathAudio(updatedGuardCenter, playerFootCenter, gameMap, dt);
-    UpdateFootstepAudio(updatedGuardCenter, playerFootCenter, movedThisFrame, gameMap, dt);
     UpdateChaseAudio(updatedDistToPlayer, dt);
 
     if (currentState == GuardState::CHASE && !isTeleporting) {
@@ -879,8 +910,8 @@ void Guard::Update(Player& player, const GameMap& gameMap, float dt) {
         if (eyeTrailSpawnTimer <= 0.0f) {
             eyeTrailSpawnTimer = 0.032f;
 
-            float w = collider.width * scale;
-            Vector2 headCenter = { position.x + w * 0.5f, position.y + 13.0f };
+            float w = frameWidth * scale;
+            Vector2 headCenter = { position.x + w * 0.5f, position.y + 13.0f * scale };
             Vector2 lookDir = { cosf(facingAngle), sinf(facingAngle) };
             Vector2 perpDir = { -lookDir.y, lookDir.x };
 
@@ -1055,14 +1086,6 @@ void Guard::UpdateChaseState(Player& player, const GameMap& gameMap, float dt) {
 void Guard::Draw() {
     float alphaMult = isTeleporting ? 0.35f : 1.0f;
 
-    Color guardColor = RED;
-    if (attackCooldownTimer > 0.0f) guardColor = MAROON;
-    else if (currentState == GuardState::INVESTIGATE) guardColor = ORANGE;
-    else if (currentState == GuardState::PATROL) guardColor = BLUE;
-
-    float w = collider.width * scale;
-    float h = collider.height * scale;
-
     // 1. Примарний шлейф червоних очей під час погоні
     for (const auto& pt : eyeTrail) {
         float a = pt.alpha * alphaMult;
@@ -1070,8 +1093,73 @@ void Guard::Draw() {
         DrawCircleV(pt.rightEye, 3.2f, ColorAlpha(RED, a * 0.45f));
     }
 
-    // 2. Силует охоронця 
-    DrawRectangleRec({ position.x, position.y, w, h }, ColorAlpha(guardColor, alphaMult));
+    float visualOffsetX = -1.5f * scale;
+    float scaledWidth = frameWidth * scale;
+    float scaledHeight = frameHeight * scale;
+
+    // 2. Контактна тінь під підошвою (ідентично Player::Draw)
+    float stepPulse = isMovingAnim ? (0.93f + 0.07f * sinf((float)currentFrame * (PI / 4.0f))) : 1.0f;
+    int shadowCenterX = (int)roundf(position.x + visualOffsetX + scaledWidth * 0.5f);
+    int shadowCenterY = (int)roundf(position.y + scaledHeight - 1.5f * scale);
+    float shadowRadiusX = (footBoxWidth * 0.60f) * stepPulse;
+    float shadowRadiusY = (footBoxHeight * 0.36f) * stepPulse;
+
+    DrawEllipse(shadowCenterX, shadowCenterY, shadowRadiusX * 1.24f, shadowRadiusY * 1.24f, ColorAlpha(BLACK, 0.22f * alphaMult));
+    DrawEllipse(shadowCenterX, shadowCenterY, shadowRadiusX, shadowRadiusY, ColorAlpha(BLACK, 0.44f * alphaMult));
+
+    // 3. Спрайт-шит охоронця (8 кадрів на рядок, 6 рядків: 0-2 Idle, 3-5 Walk)
+    if (texture.id > 0) {
+        PlayerDirection dir = GetFacingDirection();
+        int rowIndex = 0;
+        bool flipH = false;
+
+        switch (dir) {
+        case PlayerDirection::Up:
+            rowIndex = isMovingAnim ? 4 : 1;
+            break;
+        case PlayerDirection::Left:
+            rowIndex = isMovingAnim ? 5 : 2;
+            flipH = true;
+            break;
+        case PlayerDirection::Right:
+            rowIndex = isMovingAnim ? 5 : 2;
+            flipH = false;
+            break;
+        case PlayerDirection::Down:
+        case PlayerDirection::None:
+        default:
+            rowIndex = isMovingAnim ? 3 : 0;
+            break;
+        }
+
+        Color drawTint = ColorAlpha(WHITE, alphaMult);
+        if (attackCooldownTimer > 0.0f) {
+            drawTint = ColorAlpha(Color{ 255, 190, 190, 255 }, alphaMult);
+        }
+
+        Rectangle sourceRec = {
+            (float)currentFrame * frameWidth,
+            (float)rowIndex * frameHeight,
+            flipH ? -frameWidth : frameWidth,
+            frameHeight
+        };
+
+        Rectangle destRec = {
+            position.x + visualOffsetX,
+            position.y,
+            scaledWidth,
+            scaledHeight
+        };
+
+        DrawTexturePro(texture, sourceRec, destRec, Vector2{ 0.0f, 0.0f }, 0.0f, drawTint);
+    }
+    else {
+        Color guardColor = RED;
+        if (attackCooldownTimer > 0.0f) guardColor = MAROON;
+        else if (currentState == GuardState::INVESTIGATE) guardColor = ORANGE;
+        else if (currentState == GuardState::PATROL) guardColor = BLUE;
+        DrawRectangleRec({ position.x, position.y, scaledWidth, scaledHeight }, ColorAlpha(guardColor, alphaMult));
+    }
 }
 
 void Guard::DrawDebug() const {

@@ -15,7 +15,7 @@ enum class GuardState {
 
 class Guard : public Entity {
 public:
-    Guard(Vector2 startPos, float startSpeed = 120.0f, float width = 32.0f, float height = 64.0f);
+    Guard(Vector2 startPos, float startSpeed = 120.0f, float width = 32.0f, float height = 64.0f, Texture2D tex = { 0 }, float guardScale = 1.45f);
     ~Guard();
 
     void InitPathfinding(const GameMap& gameMap);
@@ -24,6 +24,9 @@ public:
     void Update(Player& player, const GameMap& gameMap, float dt);
     void Draw() override;
     void DrawDebug() const;
+
+    void SetScale(float newScale);
+    float GetScale() const { return scale; }
 
     void OnPlayerTeleported(Vector2 enteredTriggerCenter);
     void SetAudioPaused(bool paused);
@@ -34,7 +37,17 @@ public:
 
 private:
     GuardState currentState = GuardState::PATROL;
-    float scale = 1.0f;
+    float scale = 1.45f;
+
+    // --- œ¿–¿Ã≈“–» ¿Õ≤Ã¿÷≤Ø (‡Ì‡ÎÓ„≥˜ÌÓ Player) ---
+    Texture2D texture = { 0 };
+    int currentFrame = 0;
+    int totalFrames = 8;
+    float frameWidth = 32.0f;
+    float frameHeight = 64.0f;
+    float animTimer = 0.0f;
+    float frameSpeed = 0.135f;
+    bool isMovingAnim = false;
 
     // --- «≤–, —À”’ “¿ ¿“¿ ¿ ---
     float viewDistance = 230.0f;
@@ -78,11 +91,10 @@ private:
     Sound stepSoundsLeft[4] = { { 0 } };
     Sound stepSoundsRight[4] = { { 0 } };
     int stepSoundCount = 0;
-    float footstepTimer = 0.0f;
     int lastStepIndex = -1;
     float maxFootstepHearDistance = 480.0f;
 
-    // --- ¬≤«”¿À‹Õ¿ “≈À≈√–¿‘≤ﬂ (WIP)
+    // --- ¬≤«”¿À‹Õ¿ “≈À≈√–¿‘≤ﬂ (ÿÀ≈…‘ ” œŒ√ŒÕ≤) ---
     struct EyeTrailPoint {
         Vector2 leftEye;
         Vector2 rightEye;
@@ -122,14 +134,15 @@ private:
     int activeNudgeY = 0;
     int activeNudgeX = 0;
 
-    float footBoxWidth;
-    float footBoxHeight;
-    float footOffsetX;
-    float footOffsetY;
+    float footBoxWidth = 0.0f;
+    float footBoxHeight = 0.0f;
+    float footOffsetX = 0.0f;
+    float footOffsetY = 0.0f;
 
     void RecalculateFootCollider();
     Vector2 GetFootCenter() const;
     float GetActiveFovAngle() const;
+    PlayerDirection GetFacingDirection() const;
 
     // «≥, ÒÎÛı, ÔÓÏÂÌ≥ Ú‡ ‡Û‰≥Ó
     bool CanDetectPlayer(const Player& player, const GameMap& gameMap) const;
@@ -141,7 +154,7 @@ private:
     void UpdateFourWayPatrolLook(float dt);
     void UpdateChaseAudio(float distToPlayer, float dt);
     void UpdateBreathAudio(Vector2 guardCenter, Vector2 playerCenter, const GameMap& gameMap, float dt);
-    void UpdateFootstepAudio(Vector2 guardCenter, Vector2 playerCenter, bool movedThisFrame, const GameMap& gameMap, float dt);
+    void PlayFootstepAudio(Vector2 guardCenter, Vector2 playerCenter, const GameMap& gameMap);
 
     // –Ûı
     void MoveWithCollisions(Vector2 moveDir, float moveStep, const GameMap& gameMap);

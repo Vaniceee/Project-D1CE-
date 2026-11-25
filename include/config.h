@@ -35,7 +35,7 @@ namespace Config {
 	//--------ОХОРОНЕЦЬ (NPC)
 	constexpr const char* PATH_AUDIO_GUARD_CHASE = "assets/music/ChaseSFX.wav";
 	constexpr const char* PATH_AUDIO_GUARD_BREATH = "assets/Guard/Guard_Breathe.wav";
-
+	constexpr const char* PATH_PNG_GUARD_SPRITESHEET = "assets/Guard/GuardAnimations.png";
 
 
 	constexpr const char* PATH_MAP = "assets/map/CasinoMap.tmj"; // мапа в tmj
